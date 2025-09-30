@@ -71,14 +71,14 @@ runs:
 
     - name: Install action deps
       shell: bash
-      working-directory: .
+      working-directory: ${{ github.action_path }}
       run: |
         npm install --no-audit --no-fund
 
     - name: Compute root + CAR
       id: compute
       shell: bash
-      working-directory: .
+      working-directory: ${{ github.action_path }}
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_PRIVATEKEY: ${{ inputs.privateKey }}
@@ -104,7 +104,7 @@ runs:
       if: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
       id: from-cache
       shell: bash
-      working-directory: .
+      working-directory: ${{ github.action_path }}
       env:
         CACHE_DIR: ${{ github.workspace }}/.filecoin-pin-cache/${{ steps.compute.outputs.root_cid }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
@@ -155,7 +155,7 @@ runs:
       if: ${{ steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
       id: from-artifact
       shell: bash
-      working-directory: .
+      working-directory: ${{ github.action_path }}
       env:
         CACHE_DIR: ${{ github.workspace }}/filecoin-pin-artifacts-restore
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
@@ -175,7 +175,7 @@ runs:
       if: ${{ steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id == '' }}
       id: run
       shell: bash
-      working-directory: .
+      working-directory: ${{ github.action_path }}
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_PRIVATEKEY: ${{ inputs.privateKey }}
