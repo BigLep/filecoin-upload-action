@@ -6,6 +6,12 @@ on:
     workflows: ["Build PR Content"]  # Must match the name in build-pr.yml
     types:
       - completed
+  workflow_dispatch:  # Allow manual testing
+    inputs:
+      artifact_name:
+        description: 'Artifact name (e.g., filecoin-build-pr-123)'
+        required: false
+        type: string
 
 jobs:
   upload:

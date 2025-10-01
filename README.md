@@ -53,18 +53,31 @@ Always pin to a commit SHA (or release tag) for supply-chain safety.
 
 ## Inputs
 
+### Core Configuration
+
 | Name | Required | Default | Description |
 | --- | --- | --- | --- |
 | `mode` | | `build` | Action mode: `build` (default, secure - CAR only), `upload` (upload from artifact), or `all` (single-workflow, use with caution) |
-| `walletPrivateKey` | ✅* | — | Wallet private key. *Required for `all` and `upload` modes, not needed for `build` |
 | `path` | | `dist` | Directory or file to package as a CAR. Required for `all` and `build` modes |
+| `walletPrivateKey` | ✅* | — | Wallet private key. *Required for `all` and `upload` modes, not needed for `build` |
+
+### Financial Controls
+
+| Name | Required | Default | Description |
+| --- | --- | --- | --- |
 | `minDays` | | `10` | Minimum runway (days) to keep current spend alive |
+| `maxTopUp` | | — | Maximum additional deposit (USDFC) allowed in this run. **Strongly recommended for security** |
 | `minBalance` | | — | Minimum USDFC balance to keep deposited |
-| `maxTopUp` | | — | Maximum additional deposit (USDFC) allowed in this run |
+
+### Optional/Advanced
+
+| Name | Required | Default | Description |
+| --- | --- | --- | --- |
+| `github_token` | | `${{ github.token }}` | Token used for GitHub API calls (PR comments, artifact lookups) |
+| `providerAddress` | | `0xa3971…` | Override storage provider address |
 | `token` | | `USDFC` | Payment token. Currently only USDFC is supported |
 | `withCDN` | | `false` | Request CDN in the storage context |
-| `providerAddress` | | `0xa3971…` | Override storage provider address |
-| `github_token` | | `${{ github.token }}` | Token used for GitHub API calls (PR comments, artifact lookups) |
+| `artifact_name` | | — | Override artifact name for manual testing. Leave empty for auto-detection |
 
 Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifact paths, and upload status (`uploaded`, `reused-cache`, `reused-artifact`, or `build-only`).
 

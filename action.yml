@@ -5,20 +5,20 @@ branding:
   color: blue
 
 inputs:
+  # Core configuration
   mode:
     description: "Action mode: 'build' (default, secure - compute CAR only, no secrets needed), 'upload' (upload from artifact, requires secrets), or 'all' (single-workflow, less secure for PRs)"
     required: false
     default: build
-  github_token:
-    description: GitHub token for commenting and artifacts. Defaults to workflow token.
-    required: false
-  walletPrivateKey:
-    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet). Required for 'all' and 'upload' modes, not needed for 'build' mode.
-    required: false
   path:
     description: Path to content to upload (file or directory). Typically your build output directory. Required for 'all' and 'build' modes.
     required: false
     default: dist
+  walletPrivateKey:
+    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet). Required for 'all' and 'upload' modes, not needed for 'build' mode.
+    required: false
+
+  # Financial controls
   minDays:
     description: >-
       Minimum runway in days of funding to keep the current data set persisted on Filecoins.
@@ -42,6 +42,15 @@ inputs:
       Only used in 'all' and 'upload' modes.
       SECURITY: When using two-workflow pattern, hardcode this in the upload workflow.
     required: false
+
+  # Optional/Advanced configuration
+  github_token:
+    description: GitHub token for commenting and artifacts. Defaults to workflow token.
+    required: false
+  providerAddress:
+    description: Optional override for storage provider address (on Calibration/Mainnet). Defaults to a known good provider on Calibration.
+    required: false
+    default: "0xa3971A7234a3379A1813d9867B531e7EeB20ae07"
   token:
     description: Payment token identifier. Currently only "USDFC" is supported; address override reserved for future.
     required: false
@@ -50,10 +59,11 @@ inputs:
     description: "If true, request CDN in the storage context (depends on provider capabilities). Warning: filecoin-pin does not calculate deposits and run-rate costs properly with CDN enabled."
     required: false
     default: "false"
-  providerAddress:
-    description: Optional override for storage provider address (on Calibration/Mainnet). Defaults to a known good provider on Calibration.
+
+  # Debugging/Testing only
+  artifact_name:
+    description: "Optional: Override artifact name for manual testing (e.g., with workflow_dispatch). Leave empty for auto-detection from workflow_run context."
     required: false
-    default: "0xa3971A7234a3379A1813d9867B531e7EeB20ae07"
 
 outputs:
   ipfs_root_cid:
@@ -121,14 +131,14 @@ runs:
           ${{ runner.os }}-filecoin-action-deps-
 
     - name: Install action deps
-      if: steps.npm-cache.outputs.cache-hit != 'true'
+      if: ${{ steps.npm-cache.outputs.cache-hit != 'true' }}
       shell: bash
       working-directory: ${{ github.action_path }}
       run: |
         npm ci --no-audit --no-fund
 
     - name: Save action dependencies cache
-      if: steps.npm-cache.outputs.cache-hit != 'true'
+      if: ${{ always() && steps.npm-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: ${{ steps.action-path.outputs.path }}/node_modules
@@ -216,16 +226,26 @@ runs:
       id: upload-artifact-name
       shell: bash
       run: |
-        # Try to get PR number from workflow_run context
-        if [ -n "${{ github.event.workflow_run.pull_requests[0].number }}" ]; then
+        # Use manual override if provided (for workflow_dispatch testing)
+        if [ -n "${{ inputs.artifact_name }}" ]; then
+          ARTIFACT_NAME="${{ inputs.artifact_name }}"
+          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "::notice::Using manually provided artifact name: $ARTIFACT_NAME"
+        elif [ -n "${{ github.event.workflow_run.pull_requests[0].number }}" ]; then
+          # workflow_run with PR
           ARTIFACT_NAME="filecoin-build-pr-${{ github.event.workflow_run.pull_requests[0].number }}"
+          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "::notice::Auto-detected artifact name from workflow_run PR: $ARTIFACT_NAME"
+        elif [ -n "${{ github.event.workflow_run.id }}" ]; then
+          # workflow_run without PR (push to main)
+          ARTIFACT_NAME="filecoin-build-${{ github.event.workflow_run.id }}"
           echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
           echo "::notice::Auto-detected artifact name from workflow_run: $ARTIFACT_NAME"
         else
-          # Fall back to run ID from the triggering workflow
-          ARTIFACT_NAME="filecoin-build-${{ github.event.workflow_run.id }}"
+          # Fallback for manual triggers without override
+          ARTIFACT_NAME="filecoin-build-${{ github.run_id }}"
           echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-          echo "::notice::Using artifact name based on run ID: $ARTIFACT_NAME"
+          echo "::warning::No artifact_name provided and no workflow_run context. Using fallback: $ARTIFACT_NAME"
         fi
 
     # Download artifact if in upload mode
@@ -387,44 +407,14 @@ runs:
 
     - name: Comment on PR with IPFS Root CID
       if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (github.event_name == 'pull_request' || steps.auto-pr-number.outputs.pr_number != '') }}
-      uses: actions/github-script@v7
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: node comment-pr.js
       env:
         IPFS_ROOT_CID: ${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.from-artifact.outputs.ipfs_root_cid }}
         DATA_SET_ID: ${{ steps.run.outputs.data_set_id || steps.from-cache.outputs.data_set_id || steps.from-artifact.outputs.data_set_id }}
         PIECE_CID: ${{ steps.run.outputs.piece_cid || steps.from-cache.outputs.piece_cid || steps.from-artifact.outputs.piece_cid }}
         UPLOAD_STATUS: ${{ steps.run.outputs.upload_status || steps.from-cache.outputs.upload_status || steps.from-artifact.outputs.upload_status }}
-        PR_NUMBER: ${{ steps.auto-pr-number.outputs.pr_number }}
-      with:
-        github-token: ${{ inputs.github_token || github.token }}
-        script: |
-          const { IPFS_ROOT_CID, DATA_SET_ID, PIECE_CID, UPLOAD_STATUS, PR_NUMBER } = process.env
-          const preview = 'https://ipfs.io/ipfs/' + IPFS_ROOT_CID
-          let statusLine = '- Status: '
-          if (UPLOAD_STATUS === 'uploaded') statusLine += 'Uploaded new content'
-          else if (UPLOAD_STATUS === 'reused-cache') statusLine += 'Reused cached content'
-          else if (UPLOAD_STATUS === 'reused-artifact') statusLine += 'Reused artifact content'
-          else statusLine += 'Unknown (see job logs)'
-          const body = [
-            '<!-- filecoin-pin-upload-action -->',
-            'Filecoin Pin Upload ✅',
-            '',
-            '- IPFS Root CID: `' + IPFS_ROOT_CID + '`',
-            '- Data Set ID: `' + DATA_SET_ID + '`',
-            '- Piece CID: `' + PIECE_CID + '`',
-            '',
-            statusLine,
-            '',
-            '- Preview (temporary centralized gateway):',
-            '  - ' + preview,
-          ].join('\n')
-
-          const { owner, repo } = context.repo
-          // Use PR_NUMBER if provided (workflow_run context), otherwise use context.issue.number (pull_request context)
-          const issue_number = PR_NUMBER ? parseInt(PR_NUMBER, 10) : context.issue.number
-          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number })
-          const existing = comments.find(c => c.user?.type === 'Bot' && (c.body || '').includes('filecoin-pin-upload-action'))
-          if (existing) {
-            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
-          } else {
-            await github.rest.issues.createComment({ owner, repo, issue_number, body })
-          }
+        PR_NUMBER: ${{ steps.auto-pr-number.outputs.pr_number || github.event.pull_request.number }}
+        GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
