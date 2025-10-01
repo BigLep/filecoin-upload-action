@@ -233,21 +233,25 @@ runs:
         if [ -n "${{ inputs.artifact_name }}" ]; then
           ARTIFACT_NAME="${{ inputs.artifact_name }}"
           echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "is_pr=true" >> $GITHUB_OUTPUT  # Assume manual override might be for a PR
           echo "::notice::Using manually provided artifact name: $ARTIFACT_NAME"
         elif [ -n "${{ github.event.workflow_run.pull_requests[0].number }}" ]; then
           # workflow_run with PR
           ARTIFACT_NAME="filecoin-build-pr-${{ github.event.workflow_run.pull_requests[0].number }}"
           echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "is_pr=true" >> $GITHUB_OUTPUT
           echo "::notice::Auto-detected artifact name from workflow_run PR: $ARTIFACT_NAME"
         elif [ -n "${{ github.event.workflow_run.id }}" ]; then
           # workflow_run without PR (push to main)
           ARTIFACT_NAME="filecoin-build-${{ github.event.workflow_run.id }}"
           echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "is_pr=false" >> $GITHUB_OUTPUT
           echo "::notice::Auto-detected artifact name from workflow_run: $ARTIFACT_NAME"
         else
           # Fallback for manual triggers without override
           ARTIFACT_NAME="filecoin-build-${{ github.run_id }}"
           echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "is_pr=false" >> $GITHUB_OUTPUT
           echo "::warning::No artifact_name provided and no workflow_run context. Using fallback: $ARTIFACT_NAME"
         fi
 
@@ -261,9 +265,9 @@ runs:
         github-token: ${{ inputs.github_token || github.token }}
         path: ./filecoin-build-restore
 
-    # Download PR metadata if available (upload mode)
+    # Download PR metadata if available (upload mode) - only for PR builds
     - name: Download PR metadata (upload mode)
-      if: ${{ inputs.mode == 'upload' }}
+      if: ${{ inputs.mode == 'upload' && steps.upload-artifact-name.outputs.is_pr == 'true' }}
       continue-on-error: true
       uses: actions/download-artifact@v4
       with:
