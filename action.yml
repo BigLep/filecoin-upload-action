@@ -131,14 +131,14 @@ runs:
           ${{ runner.os }}-filecoin-action-deps-
 
     - name: Install action deps
-      if: steps.npm-cache.outputs.cache-hit != 'true'
+      if: ${{ steps.npm-cache.outputs.cache-hit != 'true' }}
       shell: bash
       working-directory: ${{ github.action_path }}
       run: |
         npm ci --no-audit --no-fund
 
     - name: Save action dependencies cache
-      if: steps.npm-cache.outputs.cache-hit != 'true'
+      if: ${{ always() && steps.npm-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: ${{ steps.action-path.outputs.path }}/node_modules
