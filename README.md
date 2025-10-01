@@ -107,6 +107,7 @@ Split your CI into untrusted build + trusted upload workflows.
 
 - **[examples/two-workflow-pattern/](./examples/two-workflow-pattern/)** - Ready-to-use workflow files (recommended)
 - **[USAGE.md](./USAGE.md)** - Complete usage guide with all patterns
+- **[FLOW.md](./FLOW.md)** - Internal architecture & how the action works under the hood
 - **[examples/README.md](./examples/README.md)** - Detailed setup instructions
 
 ## Caching & Artifacts
