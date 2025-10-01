@@ -11,10 +11,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          # Use PR head SHA if triggered by pull_request, otherwise use default (push event)
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       # Your build steps here (example)
       - name: Build
