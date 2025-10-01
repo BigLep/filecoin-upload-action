@@ -64,6 +64,9 @@ inputs:
   artifact_name:
     description: "Optional: Override artifact name for manual testing (e.g., with workflow_dispatch). Leave empty for auto-detection from workflow_run context."
     required: false
+  build_run_id:
+    description: "Optional: Build workflow run ID for manual testing. Only needed with workflow_dispatch - automatically detected from workflow_run context otherwise."
+    required: false
 
 outputs:
   ipfs_root_cid:
@@ -254,7 +257,7 @@ runs:
       uses: actions/download-artifact@v4
       with:
         name: ${{ steps.upload-artifact-name.outputs.name }}
-        run-id: ${{ github.event.workflow_run.id }}
+        run-id: ${{ inputs.build_run_id || github.event.workflow_run.id }}
         path: ./filecoin-build-restore
 
     # Download PR metadata if available (upload mode)
