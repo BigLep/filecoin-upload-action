@@ -156,7 +156,7 @@ filecoin-build-{id}/
 4. Extract build context (step: build-context)
    ├─> Runs: read-build-context.js
    ├─> Reads: filecoin-build-context/build-context.json
-   └─> Outputs: root_cid, pr_number, artifact_name, etc.
+   └─> Outputs: root_cid, pr_number, artifact_name, build_run_id, event_name, car_path
 
 5. Check cache (step: cache-restore)
    ├─> Key: filecoin-pin-v1-{root_cid}
@@ -400,6 +400,23 @@ workspace/
   }
 }
 ```
+
+### Build context contents
+
+- **ipfs_root_cid**: Deterministic IPFS Root CID of the built content.
+- **car_filename**: Filename of the generated CAR inside `filecoin-build-context/`.
+- **artifact_name**: Name of the build artifact uploaded in build mode.
+- **build_run_id**: The workflow run ID that produced the build artifact.
+- **event_name**: The GitHub event type that triggered the build (e.g., `pull_request`, `push`, `workflow_dispatch`).
+- **pr**: PR metadata when available (only for pull_request events):
+  - **number**: Pull request number.
+  - **sha**: Head commit SHA for the PR.
+  - **title**: PR title.
+  - **author**: PR author login.
+
+Notes:
+- The upload workflow exposes a `car_path` output derived from the saved `car_filename` as `workspace/filecoin-build-context/<car_filename>`.
+- If for any reason the file isn’t present, the upload phase falls back to creating a fresh CAR.
 
 ---
 

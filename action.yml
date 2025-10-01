@@ -377,7 +377,7 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: upload
-        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || './filecoin-build-context/*.car' }}
+        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || steps.build-context.outputs.car_path || './filecoin-build-context/*.car' }}
         PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid || steps.build-context.outputs.root_cid }}
       run: |
         node run.mjs

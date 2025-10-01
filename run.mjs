@@ -1,5 +1,6 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readdir } from 'node:fs/promises'
 import pc from 'picocolors'
 import pino from 'pino'
 import { createArtifacts, mirrorToStandardCache, readCachedMetadata, writeCachedMetadata } from './cache.js'
@@ -86,6 +87,25 @@ async function main() {
 
   // Prepare CAR and root
   let carPath = preparedCarPath
+  // If a glob-like path was provided (e.g., ./filecoin-build-context/*.car), resolve it
+  if (carPath && carPath.includes('*')) {
+    try {
+      const lastSlash = carPath.lastIndexOf('/')
+      const dirPart = lastSlash >= 0 ? carPath.slice(0, lastSlash) : '.'
+      const absDir = join(workspace, dirPart)
+      const files = await readdir(absDir)
+      const carFiles = files.filter((f) => f.toLowerCase().endsWith('.car'))
+      if (carFiles.length > 0) {
+        carPath = join(absDir, carFiles[0])
+      } else {
+        throw new Error(`No CAR files found in ${absDir}`)
+      }
+    } catch (e) {
+      console.warn('Failed to resolve CAR file from glob path:', e?.message || e)
+      // Fall back to standard flow below, which will recreate the CAR if needed
+      carPath = undefined
+    }
+  }
   let rootCidStr = preparedRootCid
   if (!carPath || !rootCidStr) {
     const { carPath: cPath, ipfsRootCid } = await createCarFile(targetPath, contentPath, logger)

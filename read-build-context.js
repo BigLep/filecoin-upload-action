@@ -32,6 +32,7 @@ async function main() {
     artifact_name: context.artifact_name || '',
     build_run_id: context.build_run_id || '',
     event_name: context.event_name || '',
+    car_path: context.car_filename ? join(workspace, 'filecoin-build-context', context.car_filename) : '',
   }
 
   // Write outputs
