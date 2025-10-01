@@ -88,6 +88,6 @@ This keeps secrets out of PR builds while still providing a deterministic previe
 
 ## Caching & Artifacts
 
-- Cache key: `filecoin-pin-v1-${root_cid}` enables reuse for identical content.
+- Cache key: `filecoin-pin-v1-${ipfs_root_cid}` enables reuse for identical content.
 - Artifacts: `filecoin-pin-artifacts/upload.car` and `filecoin-pin-artifacts/upload.json` are published for each run.
 - PR comments (optional) include the IPFS root CID, dataset ID, piece CID, and preview link.

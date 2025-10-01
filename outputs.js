@@ -31,13 +31,13 @@ export async function writeSummary(data, status) {
     const summaryFile = process.env.GITHUB_STEP_SUMMARY
     if (!summaryFile) return
 
-    const { network, rootCid, dataSetId, pieceCid, provider, previewURL, carPath, metadataPath } = data
+    const { network, ipfsRootCid, dataSetId, pieceCid, provider, previewURL, carPath, metadataPath } = data
 
     const md = [
       '## Filecoin Pin Upload',
       '',
       `- Network: ${network}`,
-      `- IPFS Root CID: \`${rootCid}\``,
+      `- IPFS Root CID: \`${ipfsRootCid}\``,
       `- Data Set ID: ${dataSetId}`,
       `- Piece CID: ${pieceCid}`,
       `- Provider: ${provider?.name || ''} (ID ${provider?.id || ''})`,

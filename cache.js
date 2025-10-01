@@ -26,12 +26,12 @@ export async function writeCachedMetadata(cacheDir, metadata) {
 /**
  * Mirror metadata to standard cache location
  * @param {string} workspace - Workspace directory
- * @param {string} rootCid - Root CID for cache key
+ * @param {string} ipfsRootCid - Root CID for cache key
  * @param {string} metadataText - Metadata JSON text
  */
-export async function mirrorToStandardCache(workspace, rootCid, metadataText) {
+export async function mirrorToStandardCache(workspace, ipfsRootCid, metadataText) {
   try {
-    const stdCacheDir = join(workspace, '.filecoin-pin-cache', rootCid)
+    const stdCacheDir = join(workspace, '.filecoin-pin-cache', ipfsRootCid)
     await fs.mkdir(stdCacheDir, { recursive: true })
     await fs.writeFile(join(stdCacheDir, 'upload.json'), metadataText)
   } catch (error) {

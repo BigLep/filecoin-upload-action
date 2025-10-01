@@ -25,9 +25,9 @@ async function main() {
 
   // PHASE: compute -> pack only, set outputs and exit
   if (phase === 'compute') {
-    const { carPath, rootCid } = await createCarFile(targetPath, contentPath, logger)
+    const { carPath, ipfsRootCid } = await createCarFile(targetPath, contentPath, logger)
     await writeOutputs({
-      root_cid: rootCid,
+      ipfs_root_cid: ipfsRootCid,
       car_path: carPath,
     })
     return
@@ -40,7 +40,7 @@ async function main() {
     const meta = await readCachedMetadata(cacheDir)
 
     await writeOutputs({
-      root_cid: meta.rootCid,
+      ipfs_root_cid: meta.ipfsRootCid,
       data_set_id: meta.dataSetId,
       piece_cid: meta.pieceCid,
       provider_id: meta.provider?.id || '',
@@ -65,7 +65,7 @@ async function main() {
 
     // Mirror the restored metadata into the standard cache location
     const metadataText = JSON.stringify(meta, null, 2)
-    await mirrorToStandardCache(workspace, meta.rootCid, metadataText)
+    await mirrorToStandardCache(workspace, meta.ipfsRootCid, metadataText)
 
     // Summary
     const status = fromArtifact ? 'Reused artifact' : 'Reused cache'
@@ -88,9 +88,9 @@ async function main() {
   let carPath = preparedCarPath
   let rootCidStr = preparedRootCid
   if (!carPath || !rootCidStr) {
-    const { carPath: cPath, rootCid } = await createCarFile(targetPath, contentPath, logger)
+    const { carPath: cPath, ipfsRootCid } = await createCarFile(targetPath, contentPath, logger)
     carPath = cPath
-    rootCidStr = rootCid
+    rootCidStr = ipfsRootCid
   }
 
   // Upload to Filecoin
@@ -101,7 +101,7 @@ async function main() {
   const metadata = {
     network,
     contentPath: targetPath,
-    rootCid: rootCidStr,
+    ipfsRootCid: rootCidStr,
     pieceCid,
     pieceId,
     dataSetId,
@@ -117,7 +117,7 @@ async function main() {
 
   // Set action outputs
   await writeOutputs({
-    root_cid: rootCidStr,
+    ipfs_root_cid: rootCidStr,
     data_set_id: dataSetId,
     piece_cid: pieceCid,
     provider_id: provider.id,

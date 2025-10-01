@@ -16,7 +16,7 @@ inputs:
     required: false
     default: dist
   minDays:
-    description: "Minimum runway (days) to keep current spend alive. Security note: on PRs, authors can change this."
+    description: "Minimum runway in days of funding to keep the current data set persisted on Filecoins. This ensures at least this much funds have been deposited to Filecoin Warm Storage.  If there isn't, the necessary deposit will be attempted.  If there are insufficient funds in the wallet, the action will fail.  Security note: on PRs, authors can change this."
     required: false
     default: "10"
   minBalance:
@@ -39,9 +39,9 @@ inputs:
     default: "0xa3971A7234a3379A1813d9867B531e7EeB20ae07"
 
 outputs:
-  root_cid:
+  ipfs_root_cid:
     description: IPFS Root CID
-    value: ${{ steps.run.outputs.root_cid }}
+    value: ${{ steps.run.outputs.ipfs_root_cid }}
   data_set_id:
     description: Synapse Data Set ID
     value: ${{ steps.run.outputs.data_set_id }}
@@ -97,8 +97,8 @@ runs:
       id: cache-restore
       uses: actions/cache/restore@v4
       with:
-        key: filecoin-pin-v1-${{ steps.compute.outputs.root_cid }}
-        path: .filecoin-pin-cache/${{ steps.compute.outputs.root_cid }}
+        key: filecoin-pin-v1-${{ steps.compute.outputs.ipfs_root_cid }}
+        path: .filecoin-pin-cache/${{ steps.compute.outputs.ipfs_root_cid }}
 
     - name: Use cached metadata
       if: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
@@ -106,7 +106,7 @@ runs:
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
-        CACHE_DIR: ${{ github.workspace }}/.filecoin-pin-cache/${{ steps.compute.outputs.root_cid }}
+        CACHE_DIR: ${{ github.workspace }}/.filecoin-pin-cache/${{ steps.compute.outputs.ipfs_root_cid }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
         INPUT_PRIVATEKEY: ${{ inputs.walletPrivateKey }}
         INPUT_MINDAYS: ${{ inputs.minDays }}
@@ -116,7 +116,7 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path }}
-        PREPARED_ROOT_CID: ${{ steps.compute.outputs.root_cid }}
+        PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid }}
         ACTION_PHASE: from-cache
       run: |
         node run.mjs
@@ -126,7 +126,7 @@ runs:
       id: find-artifact
       uses: actions/github-script@v7
       env:
-        ROOT_CID: ${{ steps.compute.outputs.root_cid }}
+        ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid }}
       with:
         github-token: ${{ inputs.github_token || github.token }}
         script: |
@@ -147,7 +147,7 @@ runs:
       if: ${{ steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
       uses: actions/download-artifact@v4
       with:
-        name: filecoin-pin-${{ steps.compute.outputs.root_cid }}
+        name: filecoin-pin-${{ steps.compute.outputs.ipfs_root_cid }}
         run-id: ${{ steps.find-artifact.outputs.run_id }}
         path: filecoin-pin-artifacts-restore
 
@@ -188,7 +188,7 @@ runs:
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: upload
         PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path }}
-        PREPARED_ROOT_CID: ${{ steps.compute.outputs.root_cid }}
+        PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid }}
       run: |
         node run.mjs
 
@@ -196,14 +196,14 @@ runs:
       if: ${{ steps.cache-restore.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
-        key: filecoin-pin-v1-${{ steps.compute.outputs.root_cid }}
-        path: .filecoin-pin-cache/${{ steps.compute.outputs.root_cid }}
+        key: filecoin-pin-v1-${{ steps.compute.outputs.ipfs_root_cid }}
+        path: .filecoin-pin-cache/${{ steps.compute.outputs.ipfs_root_cid }}
 
     - name: Upload CAR + metadata artifacts
       if: ${{ (steps.run.outputs.car_path || steps.from-cache.outputs.car_path || steps.from-artifact.outputs.car_path) != '' }}
       uses: actions/upload-artifact@v4
       with:
-        name: filecoin-pin-${{ steps.run.outputs.root_cid || steps.from-cache.outputs.root_cid || steps.from-artifact.outputs.root_cid || steps.compute.outputs.root_cid }}
+        name: filecoin-pin-${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.from-artifact.outputs.ipfs_root_cid || steps.compute.outputs.ipfs_root_cid }}
         path: |
           ${{ steps.run.outputs.car_path || steps.from-cache.outputs.car_path || steps.from-artifact.outputs.car_path }}
           ${{ steps.run.outputs.metadata_path || steps.from-cache.outputs.metadata_path || steps.from-artifact.outputs.metadata_path }}
@@ -212,7 +212,7 @@ runs:
       if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
       uses: actions/github-script@v7
       env:
-        IPFS_ROOT_CID: ${{ steps.run.outputs.root_cid || steps.from-cache.outputs.root_cid || steps.from-artifact.outputs.root_cid }}
+        IPFS_ROOT_CID: ${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.from-artifact.outputs.ipfs_root_cid }}
         DATA_SET_ID: ${{ steps.run.outputs.data_set_id || steps.from-cache.outputs.data_set_id || steps.from-artifact.outputs.data_set_id }}
         PIECE_CID: ${{ steps.run.outputs.piece_cid || steps.from-cache.outputs.piece_cid || steps.from-artifact.outputs.piece_cid }}
         UPLOAD_STATUS: ${{ steps.run.outputs.upload_status || steps.from-cache.outputs.upload_status || steps.from-artifact.outputs.upload_status }}

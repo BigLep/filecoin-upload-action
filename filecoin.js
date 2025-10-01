@@ -93,8 +93,8 @@ export async function createCarFile(targetPath, contentPath, logger) {
     const isDirectory = stat.isDirectory()
     logger.info(`Packing '${contentPath}' into CAR (UnixFS) ...`)
 
-    const { carPath, rootCid } = await createCarFromPath(targetPath, { isDirectory, logger })
-    return { carPath, rootCid: rootCid.toString() }
+    const { carPath, ipfsRootCid } = await createCarFromPath(targetPath, { isDirectory, logger })
+    return { carPath, ipfsRootCid: ipfsRootCid.toString() }
   } catch (error) {
     throw new FilecoinPinError(`Failed to create CAR file: ${error.message}`, ERROR_CODES.UPLOAD_FAILED)
   }
@@ -104,12 +104,12 @@ export async function createCarFile(targetPath, contentPath, logger) {
  * Upload CAR to Filecoin via filecoin-pin
  * @param {Object} synapse - Synapse service
  * @param {string} carPath - Path to CAR file
- * @param {string} rootCid - Root CID
+ * @param {string} ipfsRootCid - Root CID
  * @param {Object} options - Upload options
  * @param {Object} logger - Logger instance
  * @returns {Object} Upload result
  */
-export async function uploadCarToFilecoin(synapse, carPath, rootCid, options, logger) {
+export async function uploadCarToFilecoin(synapse, carPath, ipfsRootCid, options, logger) {
   const { withCDN, providerAddress } = options
 
   // Set provider address if specified
@@ -132,14 +132,14 @@ export async function uploadCarToFilecoin(synapse, carPath, rootCid, options, lo
   const { pieceCid, pieceId, dataSetId } = await uploadToSynapse(
     synapseService,
     carBytes,
-    { toString: () => rootCid },
+    { toString: () => ipfsRootCid },
     logger,
     { contextId: `gha-upload-${Date.now()}` }
   )
 
   const providerId = providerInfo.id ?? ''
   const providerName = providerInfo.name ?? (providerInfo.serviceProvider || '')
-  const previewURL = getDownloadURL(providerInfo, pieceCid) || `https://ipfs.io/ipfs/${rootCid}`
+  const previewURL = getDownloadURL(providerInfo, pieceCid) || `https://ipfs.io/ipfs/${ipfsRootCid}`
 
   return {
     pieceCid,
