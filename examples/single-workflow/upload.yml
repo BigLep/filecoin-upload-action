@@ -36,4 +36,3 @@ jobs:
           path: dist
           minDays: "30"
           maxTopUp: "100"
-

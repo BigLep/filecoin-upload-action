@@ -1,0 +1,46 @@
+name: Validate Action
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-yaml:
+    name: Validate YAML files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run yamllint
+        uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # v3.1.1
+        with:
+          file_or_dir: action.yml examples/
+          format: github
+          strict: true
+          # .yamllint config file is automatically used
+
+      - name: Validate action can be loaded (build mode)
+        uses: ./
+        id: test-load
+        continue-on-error: true
+        with:
+          mode: build  # Explicitly set build mode
+          path: ./examples
+
+      - name: Check validation result
+        if: always()
+        run: |
+          if [ "${{ steps.test-load.outcome }}" == "success" ]; then
+            echo "✅ Action loaded and executed successfully in build mode"
+          elif [ "${{ steps.test-load.outcome }}" == "failure" ]; then
+            # Build mode should work without secrets, so this is a real failure
+            echo "❌ Action failed to run in build mode"
+            exit 1
+          else
+            echo "⚠️ Action was skipped or cancelled"
+            exit 1
+          fi
+

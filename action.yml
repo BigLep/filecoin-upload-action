@@ -20,21 +20,34 @@ inputs:
     required: false
     default: dist
   minDays:
-    description: "Minimum runway in days of funding to keep the current data set persisted on Filecoins. This ensures at least this much funds have been deposited to Filecoin Warm Storage.  If there isn't, the necessary deposit will be attempted.  If there are insufficient funds in the wallet, the action will fail.  Only used in 'all' and 'upload' modes. SECURITY: When using two-workflow pattern, hardcode this in the upload workflow, not the build workflow."
+    description: >-
+      Minimum runway in days of funding to keep the current data set persisted on Filecoins.
+      This ensures at least this much funds have been deposited to Filecoin Warm Storage.
+      If there isn't, the necessary deposit will be attempted.
+      If there are insufficient funds in the wallet, the action will fail.
+      Only used in 'all' and 'upload' modes.
+      SECURITY: When using two-workflow pattern, hardcode this in the upload workflow, not the build workflow.
     required: false
     default: "10"
   minBalance:
-    description: "Minimum deposit balance to maintain in Filecoin Pay (USDFC). Only used in 'all' and 'upload' modes. SECURITY: When using two-workflow pattern, hardcode this in the upload workflow."
+    description: >-
+      Minimum deposit balance to maintain in Filecoin Pay (USDFC).
+      Only used in 'all' and 'upload' modes.
+      SECURITY: When using two-workflow pattern, hardcode this in the upload workflow.
     required: false
   maxTopUp:
-    description: "Maximum allowed additional deposit during this run (USDFC). Strongly recommended to cap PR spend. Only used in 'all' and 'upload' modes. SECURITY: When using two-workflow pattern, hardcode this in the upload workflow."
+    description: >-
+      Maximum allowed additional deposit during this run (USDFC).
+      Strongly recommended to cap PR spend.
+      Only used in 'all' and 'upload' modes.
+      SECURITY: When using two-workflow pattern, hardcode this in the upload workflow.
     required: false
   token:
     description: Payment token identifier. Currently only "USDFC" is supported; address override reserved for future.
     required: false
     default: "USDFC"
   withCDN:
-    description: If true, request CDN in the storage context (depends on provider capabilities). Warning: filecoin-pin does not calculate deposits and run-rate costs properly with CDN enabled.
+    description: "If true, request CDN in the storage context (depends on provider capabilities). Warning: filecoin-pin does not calculate deposits and run-rate costs properly with CDN enabled."
     required: false
     default: "false"
   providerAddress:
@@ -76,11 +89,50 @@ runs:
       with:
         node-version: '24.x'
 
-    - name: Install action deps
+    - name: Get package-lock.json hash
+      id: lockfile-hash
       shell: bash
       working-directory: ${{ github.action_path }}
       run: |
-        npm install --no-audit --no-fund
+        if [ -f package-lock.json ]; then
+          HASH=$(sha256sum package-lock.json | cut -d' ' -f1 | cut -c1-8)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+        else
+          echo "hash=none" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Get action path
+      id: action-path
+      shell: bash
+      run: |
+        # Normalize the action path to avoid ./ issues
+        ACTION_PATH="${{ github.action_path }}"
+        # Remove any trailing slashes and resolve
+        ACTION_PATH=$(cd "$ACTION_PATH" && pwd)
+        echo "path=$ACTION_PATH" >> $GITHUB_OUTPUT
+
+    - name: Restore action dependencies cache
+      uses: actions/cache/restore@v4
+      id: npm-cache
+      with:
+        path: ${{ steps.action-path.outputs.path }}/node_modules
+        key: ${{ runner.os }}-filecoin-action-deps-${{ steps.lockfile-hash.outputs.hash }}
+        restore-keys: |
+          ${{ runner.os }}-filecoin-action-deps-
+
+    - name: Install action deps
+      if: steps.npm-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci --no-audit --no-fund
+
+    - name: Save action dependencies cache
+      if: steps.npm-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.action-path.outputs.path }}/node_modules
+        key: ${{ runner.os }}-filecoin-action-deps-${{ steps.lockfile-hash.outputs.hash }}
 
     - name: Compute root + CAR
       id: compute

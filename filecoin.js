@@ -93,10 +93,18 @@ export async function createCarFile(targetPath, contentPath, logger) {
     const isDirectory = stat.isDirectory()
     logger.info(`Packing '${contentPath}' into CAR (UnixFS) ...`)
 
-    const { carPath, ipfsRootCid } = await createCarFromPath(targetPath, { isDirectory, logger })
-    return { carPath, ipfsRootCid: ipfsRootCid.toString() }
+    const result = await createCarFromPath(targetPath, { isDirectory, logger })
+    const { carPath, ipfsRootCid, rootCid } = result
+
+    // Handle different possible return formats from filecoin-pin
+    const cid = ipfsRootCid || rootCid
+    if (!cid) {
+      throw new FilecoinPinError(`createCarFromPath returned unexpected format: ${JSON.stringify(Object.keys(result))}`, ERROR_CODES.CAR_CREATE_FAILED)
+    }
+
+    return { carPath, ipfsRootCid: cid.toString() }
   } catch (error) {
-    throw new FilecoinPinError(`Failed to create CAR file: ${error.message}`, ERROR_CODES.UPLOAD_FAILED)
+    throw new FilecoinPinError(`Failed to create CAR file: ${error?.message || error}`, ERROR_CODES.CAR_CREATE_FAILED)
   }
 }
 
