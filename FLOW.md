@@ -384,17 +384,6 @@ All JavaScript modules for the composite action live in `src/`.
 - `ARTIFACT_NAME` environment variable from the preceding step
 - `GITHUB_RUN_ID`, `GITHUB_EVENT_NAME`, and `GITHUB_EVENT_PATH` supplied by the runner
 
-### `src/context-save.js`
-
-**When**: Any phase that needs to append metadata to the combined context
-**Purpose**: Merge partial JSON payloads into `action-context/context.json`
-**Inputs**: `CONTEXT_INPUT` env var (JSON string prepared by the calling step)
-**Outputs**: Updated combined context persisted on disk for later phases
-
-**Typical uses**:
-- During build mode, after artifact name is known, to record PR metadata and artifact identifiers.
-- After an upload completes, to record piece CID, data set ID, and provider details.
-
 ### `src/context-load.js`
 
 **When**: At the start of the action, and after restoring artifacts in upload mode
@@ -420,6 +409,7 @@ These outputs drive cache keys, artifact reuse detection, and PR commenting with
 - Handles Synapse initialization
 - Manages payments/deposits
 - Creates upload metadata
+- Merges every phase's result back into `action-context/context.json` via `mergeAndSaveContext`, so later steps, caches, and artifacts all reference the same JSON
  - In from-cache phase, it tries `upload.json` from `CACHE_DIR` first, then `ALT_CACHE_DIR`. It also derives a `car_path` if not present by scanning the directory for a `.car` file.
 
 ---

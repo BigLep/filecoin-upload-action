@@ -170,10 +170,7 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: compute
-      run: |
-        node src/run.mjs
-        node src/context-save.js
-        CONTEXT_INPUT='{"ipfs_root_cid":"${{ steps.compute.outputs.ipfs_root_cid }}","car_path":"${{ steps.compute.outputs.car_path }}","artifact_name":"${{ steps.artifact-name.outputs.name }}","build_run_id":"${{ github.run_id }}","event_name":"${{ github.event_name }}"}' node src/context-save.js
+      run: node src/run.mjs
 
     # Auto-generate artifact name based on context
     - name: Set artifact name (build mode)
@@ -346,9 +343,7 @@ runs:
         ACTION_PHASE: upload
         PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || (steps.context-from-artifact.outputs.context_car_filename && format('./action-context/{0}', steps.context-from-artifact.outputs.context_car_filename)) || './action-context/*.car' }}
         PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid || steps.context-from-artifact.outputs.context_root_cid }}
-      run: |
-        node src/run.mjs
-        CONTEXT_INPUT='{"upload_status":"uploaded","metadata_path":"${{ steps.run.outputs.metadata_path }}","ipfs_root_cid":"${{ steps.run.outputs.ipfs_root_cid }}","piece_cid":"${{ steps.run.outputs.piece_cid }}","data_set_id":"${{ steps.run.outputs.data_set_id }}"}' node src/context-save.js
+      run: node src/run.mjs
 
     - name: Save action-context to cache
       if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.run.outcome == 'success' }}
@@ -358,13 +353,13 @@ runs:
         path: action-context
 
     - name: Upload CAR + metadata artifacts
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (steps.run.outputs.car_path || steps.from-cache.outputs.car_path || steps.from-artifact.outputs.car_path) != '' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (steps.run.outputs.car_path || steps.from-cache.outputs.car_path) != '' }}
       uses: actions/upload-artifact@v4
       with:
-        name: filecoin-pin-${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.from-artifact.outputs.ipfs_root_cid || steps.compute.outputs.ipfs_root_cid }}
+        name: filecoin-pin-${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.compute.outputs.ipfs_root_cid }}
         path: |
-          ${{ steps.run.outputs.car_path || steps.from-cache.outputs.car_path || steps.from-artifact.outputs.car_path }}
-          ${{ steps.run.outputs.metadata_path || steps.from-cache.outputs.metadata_path || steps.from-artifact.outputs.metadata_path }}
+          ${{ steps.run.outputs.car_path || steps.from-cache.outputs.car_path }}
+          ${{ steps.run.outputs.metadata_path || steps.from-cache.outputs.metadata_path }}
 
     - name: Comment on PR with IPFS Root CID
       if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (github.event_name == 'pull_request' || steps.context-from-artifact.outputs.context_pr_number != '') }}
@@ -372,10 +367,10 @@ runs:
       working-directory: ${{ github.action_path }}
       run: node src/comment-pr.js
       env:
-        IPFS_ROOT_CID: ${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.from-artifact.outputs.ipfs_root_cid }}
-        DATA_SET_ID: ${{ steps.run.outputs.data_set_id || steps.from-cache.outputs.data_set_id || steps.from-artifact.outputs.data_set_id }}
-        PIECE_CID: ${{ steps.run.outputs.piece_cid || steps.from-cache.outputs.piece_cid || steps.from-artifact.outputs.piece_cid }}
-        UPLOAD_STATUS: ${{ steps.run.outputs.upload_status || steps.from-cache.outputs.upload_status || steps.from-artifact.outputs.upload_status }}
+        IPFS_ROOT_CID: ${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid }}
+        DATA_SET_ID: ${{ steps.run.outputs.data_set_id || steps.from-cache.outputs.data_set_id }}
+        PIECE_CID: ${{ steps.run.outputs.piece_cid || steps.from-cache.outputs.piece_cid }}
+        UPLOAD_STATUS: ${{ steps.run.outputs.upload_status || steps.from-cache.outputs.upload_status }}
         PR_NUMBER: ${{ steps.context-from-artifact.outputs.context_pr_number || github.event.pull_request.number }}
         GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
