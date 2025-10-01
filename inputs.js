@@ -28,7 +28,7 @@ export function parseBoolean(v) {
  * @returns {Object} Parsed and validated inputs
  */
 export function parseInputs() {
-  const privateKey = getInput('privateKey')
+  const walletPrivateKey = getInput('walletPrivateKey')
   const contentPath = getInput('path', 'dist')
   const minDaysRaw = getInput('minDays', '10')
   const minBalanceRaw = getInput('minBalance', '')
@@ -38,8 +38,8 @@ export function parseInputs() {
   const providerAddress = getInput('providerAddress', '0xa3971A7234a3379A1813d9867B531e7EeB20ae07')
 
   // Validate required inputs
-  if (!privateKey) {
-    throw new Error('privateKey is required')
+  if (!walletPrivateKey) {
+    throw new Error('walletPrivateKey is required')
   }
 
   // Parse numeric values
@@ -55,7 +55,7 @@ export function parseInputs() {
   }
 
   return {
-    privateKey,
+    walletPrivateKey,
     contentPath,
     minDays,
     minBalance,

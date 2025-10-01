@@ -17,7 +17,7 @@ async function main() {
 
   // Parse and validate inputs
   const inputs = parseInputs()
-  const { privateKey, contentPath, minDays, minBalance, maxTopUp, withCDN, token, providerAddress } = inputs
+  const { walletPrivateKey, contentPath, minDays, minBalance, maxTopUp, withCDN, token, providerAddress } = inputs
 
   // Resolve content path (relative to workspace)
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
@@ -55,7 +55,7 @@ async function main() {
 
     // Ensure balances/allowances are still correct even when skipping upload
     try {
-      const synapse = await initializeSynapse(privateKey, logger)
+      const synapse = await initializeSynapse(walletPrivateKey, logger)
       await handlePayments(synapse, { minDays, minBalance, maxTopUp }, logger)
     } catch (error) {
       console.warn('Balance/allowance validation on cache path failed:', error?.message || error)
@@ -79,7 +79,7 @@ async function main() {
   const preparedRootCid = process.env.PREPARED_ROOT_CID
 
   // Initialize Synapse service
-  const synapse = await initializeSynapse(privateKey, logger)
+  const synapse = await initializeSynapse(walletPrivateKey, logger)
 
   // Handle payments and top-ups
   await handlePayments(synapse, { minDays, minBalance, maxTopUp }, logger)

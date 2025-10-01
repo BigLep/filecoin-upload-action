@@ -21,7 +21,7 @@ jobs:
       - name: Upload to Filecoin
         uses: sgtpooki/filecoin-upload-action@<commit-sha>
         with:
-          privateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
+          walletPrivateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
           path: dist
           minDays: 10
           maxTopUp: ${{ github.event_name == 'pull_request' && '0.0001' || '0.01' }}
@@ -34,7 +34,7 @@ Always pin to a commit SHA (or release tag) for supply-chain safety.
 
 | Name | Required | Default | Description |
 | --- | --- | --- | --- |
-| `privateKey` | ✅ | — | Wallet private key used to fund uploads. |
+| `walletPrivateKey` | ✅ | — | Wallet private key used to fund uploads. |
 | `path` | | `dist` | Directory or file to package as a CAR. |
 | `minDays` | | `10` | Minimum runway (days) to keep current spend alive. |
 | `minBalance` | | — | Minimum USDFC balance to keep deposited. |
@@ -78,7 +78,7 @@ The action supports a split workflow:
      with:
        mode: upload
        prebuiltCarPath: filecoin-pin-artifacts/upload.car
-       privateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
+       walletPrivateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
        minDays: 10
        minBalance: "5"
        maxTopUp: "50"

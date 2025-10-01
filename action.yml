@@ -8,7 +8,7 @@ inputs:
   github_token:
     description: GitHub token for commenting and artifacts. Defaults to workflow token.
     required: false
-  privateKey:
+  walletPrivateKey:
     description: Required. Wallet private key used to fund uploads (USDFC on Calibration/Mainnet).
     required: true
   path:
@@ -81,7 +81,7 @@ runs:
       working-directory: ${{ github.action_path }}
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_PRIVATEKEY: ${{ inputs.privateKey }}
+        INPUT_PRIVATEKEY: ${{ inputs.walletPrivateKey }}
         INPUT_PATH: ${{ inputs.path }}
         INPUT_MINDAYS: ${{ inputs.minDays }}
         INPUT_MINBALANCE: ${{ inputs.minBalance }}
@@ -108,7 +108,7 @@ runs:
       env:
         CACHE_DIR: ${{ github.workspace }}/.filecoin-pin-cache/${{ steps.compute.outputs.root_cid }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_PRIVATEKEY: ${{ inputs.privateKey }}
+        INPUT_PRIVATEKEY: ${{ inputs.walletPrivateKey }}
         INPUT_MINDAYS: ${{ inputs.minDays }}
         INPUT_MINBALANCE: ${{ inputs.minBalance }}
         INPUT_MAXTOPUP: ${{ inputs.maxTopUp }}
@@ -159,7 +159,7 @@ runs:
       env:
         CACHE_DIR: ${{ github.workspace }}/filecoin-pin-artifacts-restore
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_PRIVATEKEY: ${{ inputs.privateKey }}
+        INPUT_PRIVATEKEY: ${{ inputs.walletPrivateKey }}
         INPUT_MINDAYS: ${{ inputs.minDays }}
         INPUT_MINBALANCE: ${{ inputs.minBalance }}
         INPUT_MAXTOPUP: ${{ inputs.maxTopUp }}
@@ -178,7 +178,7 @@ runs:
       working-directory: ${{ github.action_path }}
       env:
         INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_PRIVATEKEY: ${{ inputs.privateKey }}
+        INPUT_PRIVATEKEY: ${{ inputs.walletPrivateKey }}
         INPUT_PATH: ${{ inputs.path }}
         INPUT_MINDAYS: ${{ inputs.minDays }}
         INPUT_MINBALANCE: ${{ inputs.minBalance }}
