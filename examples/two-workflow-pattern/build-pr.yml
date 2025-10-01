@@ -1,0 +1,34 @@
+name: Build PR Content
+
+# Runs on PRs from forks and same-repo - NO SECRETS
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      # Your build steps here (example)
+      - name: Build
+        run: |
+          # npm install
+          # npm run build
+          # or whatever builds your content
+          mkdir -p dist
+          echo "Built content" > dist/index.html
+
+      # Use the action in BUILD mode (default, no secrets needed)
+      # The action automatically saves PR metadata and generates artifact names
+      - name: Build CAR file
+        id: build
+        uses: sgtpooki/filecoin-upload-action@v1  # Replace with actual version
+        with:
+          # mode: build is the default, but can be specified explicitly
+          path: dist
+

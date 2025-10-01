@@ -1,0 +1,39 @@
+name: Upload to Filecoin
+
+# Simple single-workflow pattern - for same-repo PRs only
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read        # Required for artifact reuse
+      pull-requests: write # Required for PR comments
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          # npm install
+          # npm run build
+          # or whatever builds your content
+          mkdir -p dist
+          echo "Built content" > dist/index.html
+
+      # Use the action in ALL mode (explicitly opt-in to single-workflow)
+      - name: Upload to Filecoin
+        uses: sgtpooki/filecoin-upload-action@v1  # Replace with actual version
+        with:
+          mode: all  # ⚠️ Security: Only use if you trust all contributors
+          walletPrivateKey: ${{ secrets.WALLET_PRIVATE_KEY }}
+          path: dist
+          minDays: "30"
+          maxTopUp: "100"
+

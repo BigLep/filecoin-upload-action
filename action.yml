@@ -5,32 +5,36 @@ branding:
   color: blue
 
 inputs:
+  mode:
+    description: "Action mode: 'build' (default, secure - compute CAR only, no secrets needed), 'upload' (upload from artifact, requires secrets), or 'all' (single-workflow, less secure for PRs)"
+    required: false
+    default: build
   github_token:
     description: GitHub token for commenting and artifacts. Defaults to workflow token.
     required: false
   walletPrivateKey:
-    description: Required. Wallet private key used to fund uploads (USDFC on Calibration/Mainnet).
-    required: true
+    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet). Required for 'all' and 'upload' modes, not needed for 'build' mode.
+    required: false
   path:
-    description: Path to content to upload (file or directory). Typically your build output directory.
+    description: Path to content to upload (file or directory). Typically your build output directory. Required for 'all' and 'build' modes.
     required: false
     default: dist
   minDays:
-    description: "Minimum runway in days of funding to keep the current data set persisted on Filecoins. This ensures at least this much funds have been deposited to Filecoin Warm Storage.  If there isn't, the necessary deposit will be attempted.  If there are insufficient funds in the wallet, the action will fail.  Security note: on PRs, authors can change this."
+    description: "Minimum runway in days of funding to keep the current data set persisted on Filecoins. This ensures at least this much funds have been deposited to Filecoin Warm Storage.  If there isn't, the necessary deposit will be attempted.  If there are insufficient funds in the wallet, the action will fail.  Only used in 'all' and 'upload' modes. SECURITY: When using two-workflow pattern, hardcode this in the upload workflow, not the build workflow."
     required: false
     default: "10"
   minBalance:
-    description: "Minimum deposit balance to maintain in Filecoin Pay (USDFC). Security note: on PRs, authors can change this."
+    description: "Minimum deposit balance to maintain in Filecoin Pay (USDFC). Only used in 'all' and 'upload' modes. SECURITY: When using two-workflow pattern, hardcode this in the upload workflow."
     required: false
   maxTopUp:
-    description: Maximum allowed additional deposit during this run (USDFC). Strongly recommended to cap PR spend.
+    description: "Maximum allowed additional deposit during this run (USDFC). Strongly recommended to cap PR spend. Only used in 'all' and 'upload' modes. SECURITY: When using two-workflow pattern, hardcode this in the upload workflow."
     required: false
   token:
     description: Payment token identifier. Currently only "USDFC" is supported; address override reserved for future.
     required: false
     default: "USDFC"
   withCDN:
-    description: If true, request CDN in the storage context (depends on provider capabilities).
+    description: If true, request CDN in the storage context (depends on provider capabilities). Warning: filecoin-pin does not calculate deposits and run-rate costs properly with CDN enabled.
     required: false
     default: "false"
   providerAddress:
@@ -41,25 +45,28 @@ inputs:
 outputs:
   ipfs_root_cid:
     description: IPFS Root CID
-    value: ${{ steps.run.outputs.ipfs_root_cid }}
+    value: ${{ steps.compute.outputs.ipfs_root_cid || steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.from-artifact.outputs.ipfs_root_cid }}
   data_set_id:
     description: Synapse Data Set ID
-    value: ${{ steps.run.outputs.data_set_id }}
+    value: ${{ steps.run.outputs.data_set_id || steps.from-cache.outputs.data_set_id || steps.from-artifact.outputs.data_set_id }}
   piece_cid:
     description: Filecoin Piece CID
-    value: ${{ steps.run.outputs.piece_cid }}
+    value: ${{ steps.run.outputs.piece_cid || steps.from-cache.outputs.piece_cid || steps.from-artifact.outputs.piece_cid }}
   provider_id:
     description: Storage Provider ID
-    value: ${{ steps.run.outputs.provider_id }}
+    value: ${{ steps.run.outputs.provider_id || steps.from-cache.outputs.provider_id || steps.from-artifact.outputs.provider_id }}
   provider_name:
     description: Storage Provider Name
-    value: ${{ steps.run.outputs.provider_name }}
+    value: ${{ steps.run.outputs.provider_name || steps.from-cache.outputs.provider_name || steps.from-artifact.outputs.provider_name }}
   car_path:
     description: Path to the created CAR file
-    value: ${{ steps.run.outputs.car_path }}
+    value: ${{ steps.compute.outputs.car_path || steps.run.outputs.car_path || steps.from-cache.outputs.car_path || steps.from-artifact.outputs.car_path }}
   metadata_path:
     description: Path to JSON with upload metadata
-    value: ${{ steps.run.outputs.metadata_path }}
+    value: ${{ steps.run.outputs.metadata_path || steps.from-cache.outputs.metadata_path || steps.from-artifact.outputs.metadata_path }}
+  upload_status:
+    description: Upload status (uploaded, reused-cache, reused-artifact, build-only)
+    value: ${{ steps.run.outputs.upload_status || steps.from-cache.outputs.upload_status || steps.from-artifact.outputs.upload_status || (steps.compute.outputs.ipfs_root_cid && 'build-only') }}
 
 runs:
   using: "composite"
@@ -77,6 +84,7 @@ runs:
 
     - name: Compute root + CAR
       id: compute
+      if: ${{ inputs.mode == 'all' || inputs.mode == 'build' }}
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -93,15 +101,132 @@ runs:
       run: |
         node run.mjs
 
+    # Auto-generate artifact name based on context
+    - name: Set artifact name (build mode)
+      if: ${{ inputs.mode == 'build' }}
+      id: artifact-name
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          ARTIFACT_NAME="filecoin-build-pr-${{ github.event.pull_request.number }}"
+        else
+          ARTIFACT_NAME="filecoin-build-${{ github.run_id }}"
+        fi
+        echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+        echo "::notice::Using artifact name: $ARTIFACT_NAME"
+
+    - name: Save build artifacts (build mode only)
+      if: ${{ inputs.mode == 'build' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.artifact-name.outputs.name }}
+        path: |
+          ${{ steps.compute.outputs.car_path }}
+        retention-days: 1
+
+    # Save PR metadata automatically in build mode
+    - name: Save PR metadata (build mode)
+      if: ${{ inputs.mode == 'build' && github.event_name == 'pull_request' }}
+      shell: bash
+      run: |
+        mkdir -p .filecoin-action-metadata
+        cat > .filecoin-action-metadata/pr-metadata.json <<EOF
+        {
+          "number": ${{ github.event.pull_request.number }},
+          "sha": "${{ github.event.pull_request.head.sha }}",
+          "title": ${{ toJSON(github.event.pull_request.title) }},
+          "author": "${{ github.event.pull_request.user.login }}",
+          "artifact_name": "${{ steps.artifact-name.outputs.name }}"
+        }
+        EOF
+        echo "::notice::Saved PR metadata for PR #${{ github.event.pull_request.number }}"
+
+    - name: Upload PR metadata artifact (build mode)
+      if: ${{ inputs.mode == 'build' && github.event_name == 'pull_request' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.artifact-name.outputs.name }}-metadata
+        path: .filecoin-action-metadata/pr-metadata.json
+        retention-days: 1
+
+    # Build mode complete (just a notice)
+    - name: Build mode complete
+      if: ${{ inputs.mode == 'build' }}
+      shell: bash
+      run: |
+        echo "::notice::Build mode complete. CAR file created and saved to artifact."
+        echo "::notice::IPFS Root CID: ${{ steps.compute.outputs.ipfs_root_cid }}"
+        echo "::notice::Artifact name: ${{ steps.artifact-name.outputs.name }}"
+
+    # Auto-detect artifact name in upload mode
+    - name: Auto-detect artifact name (upload mode)
+      if: ${{ inputs.mode == 'upload' }}
+      id: upload-artifact-name
+      shell: bash
+      run: |
+        # Try to get PR number from workflow_run context
+        if [ -n "${{ github.event.workflow_run.pull_requests[0].number }}" ]; then
+          ARTIFACT_NAME="filecoin-build-pr-${{ github.event.workflow_run.pull_requests[0].number }}"
+          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "::notice::Auto-detected artifact name from workflow_run: $ARTIFACT_NAME"
+        else
+          # Fall back to run ID from the triggering workflow
+          ARTIFACT_NAME="filecoin-build-${{ github.event.workflow_run.id }}"
+          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "::notice::Using artifact name based on run ID: $ARTIFACT_NAME"
+        fi
+
+    # Download artifact if in upload mode
+    - name: Download build artifact (upload mode)
+      if: ${{ inputs.mode == 'upload' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ steps.upload-artifact-name.outputs.name }}
+        run-id: ${{ github.event.workflow_run.id }}
+        path: ./filecoin-build-restore
+
+    # Download PR metadata if available (upload mode)
+    - name: Download PR metadata (upload mode)
+      if: ${{ inputs.mode == 'upload' }}
+      continue-on-error: true
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ steps.upload-artifact-name.outputs.name }}-metadata
+        run-id: ${{ github.event.workflow_run.id }}
+        path: ./filecoin-action-metadata
+
+    # Auto-detect PR number from metadata
+    - name: Auto-detect PR number (upload mode)
+      if: ${{ inputs.mode == 'upload' }}
+      id: auto-pr-number
+      shell: bash
+      run: |
+        PR_NUM=""
+
+        # Try to read from downloaded metadata
+        if [ -f "./filecoin-action-metadata/pr-metadata.json" ]; then
+          PR_NUM=$(jq -r '.number' ./filecoin-action-metadata/pr-metadata.json 2>/dev/null || echo "")
+          if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+            echo "pr_number=$PR_NUM" >> $GITHUB_OUTPUT
+            echo "::notice::Auto-detected PR number from metadata: $PR_NUM"
+            exit 0
+          fi
+        fi
+
+        # No PR metadata found - commenting will be skipped
+        echo "::notice::No PR metadata found, PR commenting will be skipped"
+        echo "pr_number=" >> $GITHUB_OUTPUT
+
     - name: Restore upload cache
       id: cache-restore
+      if: ${{ inputs.mode == 'all' || inputs.mode == 'upload' }}
       uses: actions/cache/restore@v4
       with:
-        key: filecoin-pin-v1-${{ steps.compute.outputs.ipfs_root_cid }}
-        path: .filecoin-pin-cache/${{ steps.compute.outputs.ipfs_root_cid }}
+        key: filecoin-pin-v1-${{ steps.compute.outputs.ipfs_root_cid || steps.upload-artifact-name.outputs.name }}
+        path: .filecoin-pin-cache/${{ steps.compute.outputs.ipfs_root_cid || steps.upload-artifact-name.outputs.name }}
 
     - name: Use cached metadata
-      if: ${{ steps.cache-restore.outputs.cache-hit == 'true' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit == 'true' }}
       id: from-cache
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -122,7 +247,7 @@ runs:
         node run.mjs
 
     - name: Find previous artifact by Root CID
-      if: ${{ steps.cache-restore.outputs.cache-hit != 'true' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' }}
       id: find-artifact
       uses: actions/github-script@v7
       env:
@@ -144,7 +269,7 @@ runs:
           }
 
     - name: Download previous artifact
-      if: ${{ steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
       uses: actions/download-artifact@v4
       with:
         name: filecoin-pin-${{ steps.compute.outputs.ipfs_root_cid }}
@@ -152,7 +277,7 @@ runs:
         path: filecoin-pin-artifacts-restore
 
     - name: Use artifact metadata
-      if: ${{ steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
       id: from-artifact
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -172,7 +297,7 @@ runs:
         node run.mjs
 
     - name: Upload via filecoin-pin
-      if: ${{ steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id == '' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id == '' }}
       id: run
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -187,20 +312,20 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: upload
-        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path }}
+        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || './filecoin-build-restore/*.car' }}
         PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid }}
       run: |
         node run.mjs
 
     - name: Save upload cache
-      if: ${{ steps.cache-restore.outputs.cache-hit != 'true' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         key: filecoin-pin-v1-${{ steps.compute.outputs.ipfs_root_cid }}
         path: .filecoin-pin-cache/${{ steps.compute.outputs.ipfs_root_cid }}
 
     - name: Upload CAR + metadata artifacts
-      if: ${{ (steps.run.outputs.car_path || steps.from-cache.outputs.car_path || steps.from-artifact.outputs.car_path) != '' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (steps.run.outputs.car_path || steps.from-cache.outputs.car_path || steps.from-artifact.outputs.car_path) != '' }}
       uses: actions/upload-artifact@v4
       with:
         name: filecoin-pin-${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.from-artifact.outputs.ipfs_root_cid || steps.compute.outputs.ipfs_root_cid }}
@@ -209,17 +334,18 @@ runs:
           ${{ steps.run.outputs.metadata_path || steps.from-cache.outputs.metadata_path || steps.from-artifact.outputs.metadata_path }}
 
     - name: Comment on PR with IPFS Root CID
-      if: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (github.event_name == 'pull_request' || steps.auto-pr-number.outputs.pr_number != '') }}
       uses: actions/github-script@v7
       env:
         IPFS_ROOT_CID: ${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.from-artifact.outputs.ipfs_root_cid }}
         DATA_SET_ID: ${{ steps.run.outputs.data_set_id || steps.from-cache.outputs.data_set_id || steps.from-artifact.outputs.data_set_id }}
         PIECE_CID: ${{ steps.run.outputs.piece_cid || steps.from-cache.outputs.piece_cid || steps.from-artifact.outputs.piece_cid }}
         UPLOAD_STATUS: ${{ steps.run.outputs.upload_status || steps.from-cache.outputs.upload_status || steps.from-artifact.outputs.upload_status }}
+        PR_NUMBER: ${{ steps.auto-pr-number.outputs.pr_number }}
       with:
         github-token: ${{ inputs.github_token || github.token }}
         script: |
-          const { IPFS_ROOT_CID, DATA_SET_ID, PIECE_CID, UPLOAD_STATUS } = process.env
+          const { IPFS_ROOT_CID, DATA_SET_ID, PIECE_CID, UPLOAD_STATUS, PR_NUMBER } = process.env
           const preview = 'https://ipfs.io/ipfs/' + IPFS_ROOT_CID
           let statusLine = '- Status: '
           if (UPLOAD_STATUS === 'uploaded') statusLine += 'Uploaded new content'
@@ -241,7 +367,8 @@ runs:
           ].join('\n')
 
           const { owner, repo } = context.repo
-          const issue_number = context.issue.number
+          // Use PR_NUMBER if provided (workflow_run context), otherwise use context.issue.number (pull_request context)
+          const issue_number = PR_NUMBER ? parseInt(PR_NUMBER, 10) : context.issue.number
           const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number })
           const existing = comments.find(c => c.user?.type === 'Bot' && (c.body || '').includes('filecoin-pin-upload-action'))
           if (existing) {

@@ -2,30 +2,51 @@
 
 Composite GitHub Action that packs a file or directory into a UnixFS CAR, uploads it to Filecoin, and publishes artifacts and metadata for easy reuse.
 
-## Usage
+## Quick Start
 
+The action uses a **secure two-workflow pattern** by default. This works for all PRs (including forks) and keeps your secrets safe.
+
+**Step 1: Build workflow** (runs on PR, no secrets):
 ```yaml
+# .github/workflows/build-pr.yml
+name: Build PR Content
+on: pull_request
+
 jobs:
-  upload:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read        # required for artifact reuse
-      pull-requests: write # optional, only if you want PR comments
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
       - run: npm ci && npm run build
-      - name: Upload to Filecoin
-        uses: sgtpooki/filecoin-upload-action@<commit-sha>
+      - uses: sgtpooki/filecoin-upload-action@<commit-sha>
         with:
-          walletPrivateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
           path: dist
-          minDays: 10
-          maxTopUp: ${{ github.event_name == 'pull_request' && '0.0001' || '0.01' }}
-          providerAddress: "0xa3971A7234a3379A1813d9867B531e7EeB20ae07"
+          # mode: build is the default (secure)
+```
+
+**Step 2: Upload workflow** (runs after build, has secrets):
+```yaml
+# .github/workflows/upload-to-filecoin.yml
+name: Upload to Filecoin
+on:
+  workflow_run:
+    workflows: ["Build PR Content"]
+    types: [completed]
+
+jobs:
+  upload:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: sgtpooki/filecoin-upload-action@<commit-sha>
+        with:
+          mode: upload
+          walletPrivateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
+          minDays: "30"
+          maxTopUp: "0.10"  # Hardcoded limit (0.10 USDFC = 10 cents)
 ```
 
 Always pin to a commit SHA (or release tag) for supply-chain safety.
@@ -34,57 +55,46 @@ Always pin to a commit SHA (or release tag) for supply-chain safety.
 
 | Name | Required | Default | Description |
 | --- | --- | --- | --- |
-| `walletPrivateKey` | ✅ | — | Wallet private key used to fund uploads. |
-| `path` | | `dist` | Directory or file to package as a CAR. |
-| `minDays` | | `10` | Minimum runway (days) to keep current spend alive. |
-| `minBalance` | | — | Minimum USDFC balance to keep deposited. |
-| `maxTopUp` | | — | Maximum additional deposit (USDFC) allowed in this run. |
-| `token` | | `USDFC` | Payment token. Currently only USDFC is supported. |
-| `withCDN` | | `false` | Request CDN in the storage context. |
-| `providerAddress` | | `0xa3971…` | Override storage provider address. |
-| `github_token` | | `${{ github.token }}` | Token used for GitHub API calls (PR comments, artifact lookups). |
+| `mode` | | `build` | Action mode: `build` (default, secure - CAR only), `upload` (upload from artifact), or `all` (single-workflow, use with caution) |
+| `walletPrivateKey` | ✅* | — | Wallet private key. *Required for `all` and `upload` modes, not needed for `build` |
+| `path` | | `dist` | Directory or file to package as a CAR. Required for `all` and `build` modes |
+| `minDays` | | `10` | Minimum runway (days) to keep current spend alive |
+| `minBalance` | | — | Minimum USDFC balance to keep deposited |
+| `maxTopUp` | | — | Maximum additional deposit (USDFC) allowed in this run |
+| `token` | | `USDFC` | Payment token. Currently only USDFC is supported |
+| `withCDN` | | `false` | Request CDN in the storage context |
+| `providerAddress` | | `0xa3971…` | Override storage provider address |
+| `github_token` | | `${{ github.token }}` | Token used for GitHub API calls (PR comments, artifact lookups) |
 
-Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifact paths, and upload status (`uploaded`, `reused-cache`, or `reused-artifact`).
+Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifact paths, and upload status (`uploaded`, `reused-cache`, `reused-artifact`, or `build-only`).
 
 ## Security & Permissions Checklist
 
-- Pin the action by commit SHA.
-- Grant `actions: read` if you want artifact reuse (cache fallback) to work.
-- Protect workflow files with CODEOWNERS/branch protection.
-- Cap spend with `maxTopUp`, especially on `pull_request` events. Forks do not get secrets by default, so uploads there will skip funding.
-- Consider gating deposits with Environments that require approval.
-- If you need main-branch workflows for PRs, use a two-step model (`pull_request` build → `workflow_run` upload) rather than `pull_request_target`.
+- ✅ Pin the action by commit SHA
+- ✅ Grant `actions: read` if you want artifact reuse (cache fallback) to work
+- ✅ Protect workflow files with CODEOWNERS/branch protection
+- ✅ **Always** cap spend with `maxTopUp`, especially on `pull_request` events
+- ✅ **Never** use `pull_request_target` - use the two-workflow pattern instead
+- ✅ When using two-workflow pattern, **hardcode** `minDays` and `maxTopUp` in the upload workflow
+- ✅ Enable **branch protection** on main to require reviews for workflow changes
+- ✅ Use **CODEOWNERS** to require security team approval for workflow modifications
+- ⚠️ Consider gating deposits with Environments that require approval
 
-## Two-Step (Prepare/Upload) Pattern
+## Usage
 
-The action supports a split workflow:
+The action uses a secure two-workflow pattern by default. This works for **all PRs** (including forks) and keeps your secrets safe.
 
-1. **Prepare (no secrets)**
-   ```yaml
-   - uses: sgtpooki/filecoin-upload-action@<sha>
-     with:
-       mode: prepare
-       path: dist
-       artifactName: filecoin-pin-${{ github.run_id }}-${{ github.sha }}
-   ```
+Split your CI into untrusted build + trusted upload workflows.
 
-2. **Upload (trusted)**
-   ```yaml
-   - uses: actions/download-artifact@v4
-     with:
-       name: filecoin-pin-${{ github.event.workflow_run.run_id }}-${{ github.event.workflow_run.head_sha }}
-       path: filecoin-pin-artifacts
-   - uses: sgtpooki/filecoin-upload-action@<sha>
-     with:
-       mode: upload
-       prebuiltCarPath: filecoin-pin-artifacts/upload.car
-       walletPrivateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
-       minDays: 10
-       minBalance: "5"
-       maxTopUp: "50"
-   ```
+**Security Note**: The `workflow_run` trigger always executes the workflow file from your main branch, not from the PR. Even if a PR modifies the upload workflow to change hardcoded limits, those changes won't apply until the PR is merged.
 
-This keeps secrets out of PR builds while still providing a deterministic preview.
+**See [examples/two-workflow-pattern/](./examples/two-workflow-pattern/)** for complete, ready-to-use workflow files.
+
+## Documentation
+
+- **[examples/two-workflow-pattern/](./examples/two-workflow-pattern/)** - Ready-to-use workflow files (recommended)
+- **[USAGE.md](./USAGE.md)** - Complete usage guide with all patterns
+- **[examples/README.md](./examples/README.md)** - Detailed setup instructions
 
 ## Caching & Artifacts
 
