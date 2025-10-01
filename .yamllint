@@ -1,0 +1,25 @@
+---
+extends: default
+
+rules:
+  # GitHub Actions allows long lines in some cases (like descriptions)
+  line-length:
+    max: 200
+    level: error
+
+  # We don't need document start markers (---)
+  document-start: disable
+
+  # Allow comments to be freely formatted
+  comments: disable
+
+  # GitHub Actions often uses truthy values like "on:"
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off']
+    check-keys: false
+
+  # Allow empty values (common in GitHub Actions)
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: false
+

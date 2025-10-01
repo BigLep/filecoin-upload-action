@@ -24,4 +24,3 @@ jobs:
           minDays: "30"  # Ensure 30 days of funding; Hardcoded - not from PR!
           maxTopUp: "0.10" # 10 cents, or 0.10 USDFC; Hardcoded limit - not from PR!
           github_token: ${{ secrets.GITHUB_TOKEN }}
-
