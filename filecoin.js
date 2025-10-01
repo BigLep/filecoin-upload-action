@@ -26,7 +26,7 @@ import { ERROR_CODES, FilecoinPinError } from './errors.js'
  */
 export async function initializeSynapse(walletPrivateKey, logger) {
   try {
-    return await initSynapse({ walletPrivateKey }, logger)
+    return await initSynapse({ privateKey: walletPrivateKey }, logger)
   } catch (error) {
     if (error.message?.includes('invalid private key')) {
       throw new FilecoinPinError('Invalid private key format', ERROR_CODES.INVALID_PRIVATE_KEY)
