@@ -172,11 +172,11 @@ filecoin-build-{id}/
    └─> If not found: This is new content
 
 8. [Previous artifact found] Download previous artifact
-   ├─> Downloads upload metadata from previous run
-   ├─> Outputs: piece_cid, data_set_id, etc.
-   └─> Reuses without re-uploading
+   ├─> Attempts to download upload metadata from previous run
+   ├─> If download SUCCEEDS: Reuse metadata (no re-upload)
+   └─> If download FAILS (expired/inaccessible): Fallback to fresh upload
 
-9. [New content] Upload via filecoin-pin (step: run)
+9. [New content or artifact download failed] Upload via filecoin-pin (step: run)
    ├─> Runs: node run.mjs (ACTION_PHASE=upload)
    ├─> Uses: ./filecoin-build-context/*.car
    ├─> Root CID: from build-context

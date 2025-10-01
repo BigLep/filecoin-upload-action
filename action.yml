@@ -333,6 +333,7 @@ runs:
 
     - name: Download previous artifact
       if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
+      id: download-previous-upload-artifact
       continue-on-error: true
       uses: actions/download-artifact@v4
       with:
@@ -341,7 +342,7 @@ runs:
         path: filecoin-pin-artifacts-restore
 
     - name: Use artifact metadata
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' && steps.download-previous-upload-artifact.outcome == 'success' }}
       id: from-artifact
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -361,7 +362,7 @@ runs:
         node run.mjs
 
     - name: Upload via filecoin-pin
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id == '' }}
+      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && (steps.find-artifact.outputs.artifact_id == '' || steps.download-previous-upload-artifact.outcome != 'success') }}
       id: run
       shell: bash
       working-directory: ${{ github.action_path }}
