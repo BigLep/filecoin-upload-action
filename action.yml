@@ -89,14 +89,26 @@ runs:
       with:
         node-version: '24.x'
 
+    - name: Get package-lock.json hash
+      id: lockfile-hash
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        if [ -f package-lock.json ]; then
+          HASH=$(sha256sum package-lock.json | cut -d' ' -f1 | cut -c1-8)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+        else
+          echo "hash=none" >> $GITHUB_OUTPUT
+        fi
+
     - name: Cache action dependencies
       uses: actions/cache@v4
       id: npm-cache
       with:
         path: ${{ github.action_path }}/node_modules
-        key: ${{ runner.os }}-npm-${{ hashFiles(format('{0}/package-lock.json', github.action_path)) }}
+        key: ${{ runner.os }}-filecoin-action-deps-${{ steps.lockfile-hash.outputs.hash }}
         restore-keys: |
-          ${{ runner.os }}-npm-
+          ${{ runner.os }}-filecoin-action-deps-
 
     - name: Install action deps
       if: steps.npm-cache.outputs.cache-hit != 'true'
