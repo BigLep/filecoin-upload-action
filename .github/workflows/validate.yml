@@ -31,6 +31,7 @@ jobs:
           path: .
 
       - name: Check validation result
+        if: always()
         run: |
           if [ "${{ steps.test-load.outcome }}" == "success" ]; then
             echo "✅ Action loaded and executed successfully in build mode"
