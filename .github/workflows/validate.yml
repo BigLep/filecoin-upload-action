@@ -22,13 +22,24 @@ jobs:
           strict: true
           # .yamllint config file is automatically used
 
-      - name: Validate action can be loaded
+      - name: Validate action can be loaded (build mode)
         uses: ./
         id: test-load
+        continue-on-error: true
         with:
+          mode: build  # Explicitly set build mode
           path: .
-          # mode: build is default, doesn't need secrets
 
-      - name: Verify action loaded successfully
-        run: echo "✅ Action metadata is valid and loaded successfully"
+      - name: Check validation result
+        run: |
+          if [ "${{ steps.test-load.outcome }}" == "success" ]; then
+            echo "✅ Action loaded and executed successfully in build mode"
+          elif [ "${{ steps.test-load.outcome }}" == "failure" ]; then
+            # Build mode should work without secrets, so this is a real failure
+            echo "❌ Action failed to run in build mode"
+            exit 1
+          else
+            echo "⚠️ Action was skipped or cancelled"
+            exit 1
+          fi
 
