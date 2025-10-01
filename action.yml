@@ -197,44 +197,28 @@ runs:
           }
       run: node save-build-context.js
 
-    # Organize files for artifact upload (ensure all paths are relative to workspace)
+    # Copy CAR file into context directory for artifact upload
     - name: Prepare artifact contents (build mode)
       if: ${{ inputs.mode == 'build' }}
       shell: bash
       run: |
-        echo "Current directory: $(pwd)"
-        echo "Listing workspace contents:"
-        ls -la
-        echo "CAR path: ${{ steps.compute.outputs.car_path }}"
-
-        mkdir -p .filecoin-build-artifact
-
         if [ -f "${{ steps.compute.outputs.car_path }}" ]; then
-          cp "${{ steps.compute.outputs.car_path }}" .filecoin-build-artifact/
-          echo "Copied CAR file"
+          cp "${{ steps.compute.outputs.car_path }}" filecoin-build-context/
+          echo "Copied CAR file to context directory"
         else
           echo "ERROR: CAR file not found at ${{ steps.compute.outputs.car_path }}"
           exit 1
         fi
 
-        if [ -d ".filecoin-build-context" ]; then
-          cp -r .filecoin-build-context .filecoin-build-artifact/
-          echo "Copied context directory"
-        else
-          echo "ERROR: Context directory not found at .filecoin-build-context"
-          ls -la .filecoin-build-* 2>/dev/null || echo "No .filecoin-build-* directories found"
-          exit 1
-        fi
-
         echo "Artifact contents:"
-        ls -la .filecoin-build-artifact/
+        ls -la filecoin-build-context/
 
     - name: Save build artifacts (build mode only)
       if: ${{ inputs.mode == 'build' }}
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.artifact-name.outputs.name }}
-        path: .filecoin-build-artifact
+        path: filecoin-build-context
         retention-days: 1
 
     # Build mode complete (just a notice)
@@ -286,7 +270,7 @@ runs:
         name: ${{ steps.upload-artifact-name.outputs.name }}
         run-id: ${{ inputs.build_run_id || github.event.workflow_run.id }}
         github-token: ${{ inputs.github_token || github.token }}
-        path: ./filecoin-build-restore
+        path: ./filecoin-build-context
 
     # Extract build context from downloaded artifact
     - name: Extract build context (upload mode)
@@ -391,7 +375,7 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: upload
-        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || './filecoin-build-restore/.filecoin-build-artifact/*.car' }}
+        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || './filecoin-build-context/*.car' }}
         PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid || steps.build-context.outputs.root_cid }}
       run: |
         node run.mjs

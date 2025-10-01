@@ -38,7 +38,7 @@ async function main() {
   }
 
   // Ensure directory exists in workspace
-  const contextDir = join(workspace, '.filecoin-build-context')
+  const contextDir = join(workspace, 'filecoin-build-context')
   await mkdir(contextDir, { recursive: true })
 
   // Write context
