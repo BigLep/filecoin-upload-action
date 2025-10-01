@@ -101,11 +101,21 @@ runs:
           echo "hash=none" >> $GITHUB_OUTPUT
         fi
 
+    - name: Get action path
+      id: action-path
+      shell: bash
+      run: |
+        # Normalize the action path to avoid ./ issues
+        ACTION_PATH="${{ github.action_path }}"
+        # Remove any trailing slashes and resolve
+        ACTION_PATH=$(cd "$ACTION_PATH" && pwd)
+        echo "path=$ACTION_PATH" >> $GITHUB_OUTPUT
+
     - name: Restore action dependencies cache
       uses: actions/cache/restore@v4
       id: npm-cache
       with:
-        path: ${{ github.action_path }}/node_modules
+        path: ${{ steps.action-path.outputs.path }}/node_modules
         key: ${{ runner.os }}-filecoin-action-deps-${{ steps.lockfile-hash.outputs.hash }}
         restore-keys: |
           ${{ runner.os }}-filecoin-action-deps-
@@ -121,7 +131,7 @@ runs:
       if: steps.npm-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: ${{ github.action_path }}/node_modules
+        path: ${{ steps.action-path.outputs.path }}/node_modules
         key: ${{ runner.os }}-filecoin-action-deps-${{ steps.lockfile-hash.outputs.hash }}
 
     - name: Compute root + CAR
