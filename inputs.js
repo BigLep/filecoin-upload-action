@@ -25,9 +25,10 @@ export function parseBoolean(v) {
 
 /**
  * Parse and validate all action inputs
+ * @param {string} phase - Action phase (compute, from-cache, or upload/single)
  * @returns {Object} Parsed and validated inputs
  */
-export function parseInputs() {
+export function parseInputs(phase = 'single') {
   const walletPrivateKey = getInput('walletPrivateKey')
   const contentPath = getInput('path', 'dist')
   const minDaysRaw = getInput('minDays', '10')
@@ -37,8 +38,9 @@ export function parseInputs() {
   const token = getInput('token', 'USDFC')
   const providerAddress = getInput('providerAddress', '0xa3971A7234a3379A1813d9867B531e7EeB20ae07')
 
-  // Validate required inputs
-  if (!walletPrivateKey) {
+  // Validate required inputs (only for phases that need wallet)
+  // Build mode (compute phase) doesn't need the wallet
+  if (phase !== 'compute' && !walletPrivateKey) {
     throw new Error('walletPrivateKey is required')
   }
 

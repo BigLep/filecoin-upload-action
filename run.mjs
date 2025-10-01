@@ -15,8 +15,8 @@ async function main() {
   const phase = process.env.ACTION_PHASE || 'single'
   const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
 
-  // Parse and validate inputs
-  const inputs = parseInputs()
+  // Parse and validate inputs (pass phase to skip wallet validation in compute mode)
+  const inputs = parseInputs(phase)
   const { walletPrivateKey, contentPath, minDays, minBalance, maxTopUp, withCDN, token, providerAddress } = inputs
 
   // Resolve content path (relative to workspace)
