@@ -4,6 +4,8 @@ name: Build PR Content
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  push:
+    branches: [main]  # Also run when PRs are merged to main
 
 jobs:
   build:
