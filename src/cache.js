@@ -7,7 +7,7 @@ import { join } from 'node:path'
  * @returns {Object} Cached metadata
  */
 export async function readCachedMetadata(cacheDir) {
-  const metaPath = join(cacheDir, 'upload.json')
+  const metaPath = join(cacheDir, 'context.json')
   const text = await fs.readFile(metaPath, 'utf8')
   return JSON.parse(text)
 }
@@ -19,8 +19,15 @@ export async function readCachedMetadata(cacheDir) {
  */
 export async function writeCachedMetadata(cacheDir, metadata) {
   await fs.mkdir(cacheDir, { recursive: true })
-  const metaPath = join(cacheDir, 'upload.json')
-  await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2))
+  const metaPath = join(cacheDir, 'context.json')
+  // Merge if exists
+  try {
+    const existing = JSON.parse(await fs.readFile(metaPath, 'utf8'))
+    const merged = { ...existing, ...metadata }
+    await fs.writeFile(metaPath, JSON.stringify(merged, null, 2))
+  } catch {
+    await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2))
+  }
 }
 
 /**
@@ -31,11 +38,26 @@ export async function writeCachedMetadata(cacheDir, metadata) {
  */
 export async function mirrorToStandardCache(workspace, ipfsRootCid, metadataText) {
   try {
-    const stdCacheDir = join(workspace, '.filecoin-pin-cache', ipfsRootCid)
-    await fs.mkdir(stdCacheDir, { recursive: true })
-    await fs.writeFile(join(stdCacheDir, 'upload.json'), metadataText)
+    const ctxDir = join(workspace, 'action-context')
+    await fs.mkdir(ctxDir, { recursive: true })
+    const ctxPath = join(ctxDir, 'context.json')
+    let existing = {}
+    try {
+      existing = JSON.parse(await fs.readFile(ctxPath, 'utf8'))
+    } catch {}
+    const meta = JSON.parse(metadataText)
+    // Map common fields
+    const mapped = {
+      ipfs_root_cid: meta.ipfsRootCid || existing.ipfs_root_cid || ipfsRootCid,
+      piece_cid: meta.pieceCid || existing.piece_cid,
+      data_set_id: meta.dataSetId || existing.data_set_id,
+      provider: meta.provider || existing.provider,
+      car_path: meta.carPath || existing.car_path,
+    }
+    const merged = { ...existing, ...mapped }
+    await fs.writeFile(ctxPath, JSON.stringify(merged, null, 2))
   } catch (error) {
-    console.warn('Failed to mirror metadata into .filecoin-pin-cache:', error?.message || error)
+    console.warn('Failed to mirror metadata into action-context/context.json:', error?.message || error)
   }
 }
 

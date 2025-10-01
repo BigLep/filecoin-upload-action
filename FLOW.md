@@ -104,7 +104,7 @@ The action is designed to support **untrusted fork PRs** by separating content b
    └─> Uses cache for faster runs
 
 3. Compute CAR file (step: compute)
-   ├─> Runs: node run.mjs (ACTION_PHASE=compute)
+   ├─> Runs: node src/run.mjs (ACTION_PHASE=compute)
    ├─> Packs content into CAR using filecoin-pin
    ├─> Saves CAR to /tmp/filecoin-pin-add-*.car
    └─> Outputs: ipfs_root_cid, car_path
@@ -113,13 +113,14 @@ The action is designed to support **untrusted fork PRs** by separating content b
    └─> PR: filecoin-build-pr-{number}
    └─> Push: filecoin-build-{run_id}
 
-5. Save build context (runs: save-build-context.js)
-   ├─> Creates: filecoin-build-context/build-context.json
-   └─> Contains: Root CID, PR metadata, artifact name, etc.
+5. Update combined context metadata
+   ├─> Runs: node src/update-build-context.js (merges artifact + PR info)
+   └─> Writes to: action-context/context.json (used by future phases)
 
 6. Prepare artifact contents
    ├─> Copies CAR file to: filecoin-build-context/
-   └─> Directory now has: build-context.json + *.car
+   ├─> Copies action-context/context.json into artifact (also as build-context.json)
+   └─> Directory now has: context.json + build-context.json + *.car
 
 7. Upload artifact
    └─> Uploads entire filecoin-build-context/ directory
@@ -128,6 +129,7 @@ The action is designed to support **untrusted fork PRs** by separating content b
 **Final artifact structure:**
 ```
 filecoin-build-{id}/
+  ├── context.json
   ├── build-context.json
   └── filecoin-pin-add-*.car
 ```
@@ -150,13 +152,13 @@ filecoin-build-{id}/
 
 3. Download build artifact
    ├─> Downloads: filecoin-build-{id}
-   ├─> Extracts to: ./filecoin-build-context/
-   └─> Now we have: CAR file + build-context.json
+   ├─> Extracts to: ./action-context/
+   └─> Now we have: CAR file + context.json available for reuse
 
-4. Extract build context (step: build-context)
-   ├─> Runs: read-build-context.js
-   ├─> Reads: filecoin-build-context/build-context.json
-   └─> Outputs: root_cid, pr_number, artifact_name, build_run_id, event_name, car_path
+4. Load combined context (step: context-from-artifact)
+   ├─> Runs: node src/context-load.js
+   ├─> Reads: action-context/context.json (restored from artifact)
+   └─> Outputs: root CID, car filename, PR metadata, etc.
 
 5. Check cache (step: cache-restore)
    ├─> Key: filecoin-pin-v1-{root_cid}
@@ -177,7 +179,7 @@ filecoin-build-{id}/
    └─> If download FAILS (expired/inaccessible): Fallback to fresh upload
 
 9. [New content or artifact download failed] Upload via filecoin-pin (step: run)
-   ├─> Runs: node run.mjs (ACTION_PHASE=upload)
+   ├─> Runs: node src/run.mjs (ACTION_PHASE=upload)
    ├─> Uses: ./filecoin-build-context/*.car
    ├─> Root CID: from build-context
    ├─> Uploads to Filecoin
@@ -240,14 +242,14 @@ The action has **THREE layers** of deduplication:
 ### Layer 1: Actions Cache (fastest)
 
 ```yaml
-Key: filecoin-pin-v1-{root_cid}
-Path: .filecoin-pin-cache/{root_cid}/
+Key: filecoin-v1-{root_cid}
+Path: action-context/
 ```
 
 **When it helps**:
 - Same content built in the same repository
 - Cache survives across workflow runs
-- Fastest (no download needed)
+- Fastest (restores entire action-context with context.json and CAR)
 
 **When it doesn't help**:
 - Different repositories
@@ -259,12 +261,13 @@ Path: .filecoin-pin-cache/{root_cid}/
 
 ```
 Searches for: filecoin-pin-{root_cid}
+Downloads and merges into action-context/context.json
 ```
 
 **When it helps**:
 - Content was uploaded before but cache expired
 - Works across different branches
-- Survives longer than cache
+- Survives longer than cache (default retention)
 
 **When it doesn't help**:
 - Artifact expired (default retention)
@@ -353,8 +356,8 @@ Uploads to Filecoin, creates new filecoin-pin-{cid} artifact
 ```
 workspace/
   ├── dist/                          # Your build output
-  └── filecoin-build-context/        # Created by action
-      ├── build-context.json         # Metadata
+  └── action-context/        # Created by action
+      ├── context.json         # build context
       └── filecoin-pin-add-*.car     # CAR file
 ```
 
@@ -362,85 +365,62 @@ workspace/
 
 ```
 workspace/
-  ├── filecoin-build-context/        # Downloaded artifact
-  │   ├── build-context.json         # Read by read-build-context.js
-  │   └── filecoin-pin-add-*.car     # Used for upload
-  ├── .filecoin-pin-cache/           # Cache directory
-  │   └── {root_cid}/
-  │       └── upload.json            # Cached metadata
-  └── filecoin-pin-artifacts-restore/  # If previous artifact found
-      ├── *.car
-      └── upload.json
+  ├── action-context/                # Unified working directory
+  │   ├── context.json               # Combined build+upload context (all metadata here)
+  │   └── *.car                      # CAR file (from build or restored)
 ```
 
 ---
 
 ## Key Scripts
 
-### `save-build-context.js`
+All JavaScript modules for the composite action live in `src/`.
 
-**When**: Build mode, after CAR creation
-**Purpose**: Save build metadata to JSON
-**Input**: `BUILD_CONTEXT_INPUT` env var (JSON)
-**Output**: `filecoin-build-context/build-context.json`
+### `src/update-build-context.js`
 
-**What it saves**:
-```json
-{
-  "ipfs_root_cid": "bafybeiabc...",
-  "car_filename": "filecoin-pin-add-*.car",
-  "artifact_name": "filecoin-build-pr-123",
-  "build_run_id": "123456",
-  "event_name": "pull_request",
-  "pr": {
-    "number": 123,
-    "sha": "abc123",
-    "title": "Fix bug",
-    "author": "username"
-  }
-}
-```
+**When**: Build mode, immediately after the artifact name is determined
+**Purpose**: Gather artifact and PR metadata from GitHub-provided environment variables and merge them into the combined context via `mergeAndSaveContext`
+**Inputs**:
+- `ARTIFACT_NAME` environment variable from the preceding step
+- `GITHUB_RUN_ID`, `GITHUB_EVENT_NAME`, and `GITHUB_EVENT_PATH` supplied by the runner
 
-### Build context contents
+### `src/context-save.js`
 
-- **ipfs_root_cid**: Deterministic IPFS Root CID of the built content.
-- **car_filename**: Filename of the generated CAR inside `filecoin-build-context/`.
-- **artifact_name**: Name of the build artifact uploaded in build mode.
-- **build_run_id**: The workflow run ID that produced the build artifact.
-- **event_name**: The GitHub event type that triggered the build (e.g., `pull_request`, `push`, `workflow_dispatch`).
-- **pr**: PR metadata when available (only for pull_request events):
-  - **number**: Pull request number.
-  - **sha**: Head commit SHA for the PR.
-  - **title**: PR title.
-  - **author**: PR author login.
+**When**: Any phase that needs to append metadata to the combined context
+**Purpose**: Merge partial JSON payloads into `action-context/context.json`
+**Inputs**: `CONTEXT_INPUT` env var (JSON string prepared by the calling step)
+**Outputs**: Updated combined context persisted on disk for later phases
 
-Notes:
-- The upload workflow exposes a `car_path` output derived from the saved `car_filename` as `workspace/filecoin-build-context/<car_filename>`.
-- If for any reason the file isn’t present, the upload phase falls back to creating a fresh CAR.
+**Typical uses**:
+- During build mode, after artifact name is known, to record PR metadata and artifact identifiers.
+- After an upload completes, to record piece CID, data set ID, and provider details.
+
+### `src/context-load.js`
+
+**When**: At the start of the action, and after restoring artifacts in upload mode
+**Purpose**: Read `action-context/context.json` and expose structured outputs with `context_*` prefixes
+**Outputs include**:
+- `context_root_cid`, `context_car_filename`, `context_artifact_name`
+- PR metadata (`context_pr_number`, `context_pr_sha`, etc.) when available
+- Upload metadata (`context_piece_cid`, `context_data_set_id`, `context_upload_status`)
+
+These outputs drive cache keys, artifact reuse detection, and PR commenting without needing bespoke helper scripts.
 
 ---
 
-### `read-build-context.js`
-
-**When**: Upload mode, after artifact download
-**Purpose**: Extract metadata and set GitHub Actions outputs
-**Input**: `filecoin-build-context/build-context.json`
-**Output**: GitHub Actions step outputs (root_cid, pr_number, etc.)
-
----
-
-### `run.mjs`
+### `src/run.mjs`
 
 **Phases**:
 1. `ACTION_PHASE=compute`: Create CAR file only
 2. `ACTION_PHASE=upload`: Upload to Filecoin
-3. `ACTION_PHASE=from-cache`: Use cached/previous metadata
+3. `ACTION_PHASE=from-cache`: Use cached/previous metadata (reads from `CACHE_DIR`, or if missing, `ALT_CACHE_DIR`).
 
 **What it does**:
 - Calls `filecoin-pin` library
 - Handles Synapse initialization
 - Manages payments/deposits
 - Creates upload metadata
+ - In from-cache phase, it tries `upload.json` from `CACHE_DIR` first, then `ALT_CACHE_DIR`. It also derives a `car_path` if not present by scanning the directory for a `.car` file.
 
 ---
 
@@ -500,4 +480,3 @@ When modifying this action:
 ---
 
 Last updated: 2025-10-01
-

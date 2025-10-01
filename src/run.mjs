@@ -1,16 +1,16 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readdir } from 'node:fs/promises'
+import { readdir, access } from 'node:fs/promises'
+import { constants as fsConstants } from 'node:fs'
 import pc from 'picocolors'
 import pino from 'pino'
-import { createArtifacts, mirrorToStandardCache, readCachedMetadata, writeCachedMetadata } from './cache.js'
+import { createArtifacts } from './cache.js'
+import { loadContext, mergeAndSaveContext, contextWithCar } from './context.js'
 import { handleError } from './errors.js'
 import { cleanupSynapse, createCarFile, handlePayments, initializeSynapse, uploadCarToFilecoin } from './filecoin.js'
 // Import our organized modules
 import { parseInputs, resolveContentPath } from './inputs.js'
 import { writeOutputs, writeSummary } from './outputs.js'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
 
 async function main() {
   const phase = process.env.ACTION_PHASE || 'single'
@@ -24,37 +24,72 @@ async function main() {
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
   const targetPath = resolveContentPath(contentPath)
 
+  // Merge minimal run metadata
+  await mergeAndSaveContext(workspace, {
+    event_name: process.env.GITHUB_EVENT_NAME || '',
+    run_id: process.env.GITHUB_RUN_ID || '',
+    repository: process.env.GITHUB_REPOSITORY || '',
+    mode: process.env.INPUT_MODE || '',
+    phase,
+  })
+
   // PHASE: compute -> pack only, set outputs and exit
   if (phase === 'compute') {
     const { carPath, ipfsRootCid } = await createCarFile(targetPath, contentPath, logger)
+    await mergeAndSaveContext(workspace, {
+      ipfs_root_cid: ipfsRootCid,
+      ...contextWithCar(workspace, carPath),
+    })
     await writeOutputs({
       ipfs_root_cid: ipfsRootCid,
       car_path: carPath,
     })
+    // Save context at end of compute phase
+    await mergeAndSaveContext(workspace, { phase: 'compute:done' })
     return
   }
 
-  // PHASE: from-cache -> read cached metadata and set outputs + summary
+  // PHASE: from-cache -> read context and set outputs + summary
   if (phase === 'from-cache') {
+    const ctx = await loadContext(workspace)
+
+    if (!ctx.piece_cid || !ctx.data_set_id) {
+      console.log('No cached metadata found in context. Proceeding without reuse.')
+      return
+    }
+
+    // Determine CAR path from context or find it in action-context
+    let resolvedCarPath = ctx.car_path
+    if (!resolvedCarPath) {
+      try {
+        const ctxDir = join(workspace, 'action-context')
+        const files = await readdir(ctxDir)
+        const car = files.find((f) => f.toLowerCase().endsWith('.car'))
+        if (car) {
+          resolvedCarPath = join(ctxDir, car)
+        }
+      } catch (_) {
+        // ignore
+      }
+    }
+
     const fromArtifact = String(process.env.FROM_ARTIFACT || '').toLowerCase() === 'true'
-    const cacheDir = process.env.CACHE_DIR
-    const meta = await readCachedMetadata(cacheDir)
 
     await writeOutputs({
-      ipfs_root_cid: meta.ipfsRootCid,
-      data_set_id: meta.dataSetId,
-      piece_cid: meta.pieceCid,
-      provider_id: meta.provider?.id || '',
-      provider_name: meta.provider?.name || '',
-      car_path: meta.carPath,
-      metadata_path: join(cacheDir, 'upload.json'),
+      ipfs_root_cid: ctx.ipfs_root_cid || '',
+      data_set_id: ctx.data_set_id || '',
+      piece_cid: ctx.piece_cid || '',
+      provider_id: ctx.provider?.id || '',
+      provider_name: ctx.provider?.name || '',
+      car_path: resolvedCarPath || '',
+      metadata_path: join(workspace, 'action-context', 'context.json'),
       upload_status: fromArtifact ? 'reused-artifact' : 'reused-cache',
     })
 
-    // Log reuse status for easy scanning
+    // Log reuse status
     console.log(fromArtifact ? 'Reused previous artifact (no new upload)' : 'Reused cached metadata (no new upload)')
 
-    // Ensure balances/allowances are still correct even when skipping upload
+    // Ensure balances/allowances are still correct
     try {
       const synapse = await initializeSynapse(walletPrivateKey, logger)
       await handlePayments(synapse, { minDays, minBalance, maxTopUp }, logger)
@@ -64,14 +99,11 @@ async function main() {
       await cleanupSynapse()
     }
 
-    // Mirror the restored metadata into the standard cache location
-    const metadataText = JSON.stringify(meta, null, 2)
-    await mirrorToStandardCache(workspace, meta.ipfsRootCid, metadataText)
-
     // Summary
     const status = fromArtifact ? 'Reused artifact' : 'Reused cache'
-    await writeSummary(meta, status)
+    await writeSummary(ctx, status)
 
+    await mergeAndSaveContext(workspace, { phase: 'from-cache:done' })
     return
   }
 
@@ -113,6 +145,11 @@ async function main() {
     rootCidStr = ipfsRootCid
   }
 
+  await mergeAndSaveContext(workspace, {
+    ipfs_root_cid: rootCidStr,
+    ...contextWithCar(workspace, carPath),
+  })
+
   // Upload to Filecoin
   const uploadResult = await uploadCarToFilecoin(synapse, carPath, rootCidStr, { withCDN, providerAddress }, logger)
   const { pieceCid, pieceId, dataSetId, provider, previewURL, network } = uploadResult
@@ -131,9 +168,22 @@ async function main() {
 
   const { artifactCarPath, metadataPath } = await createArtifacts(workspace, carPath, metadata)
 
-  // Write metadata into the cache directory for future reuse
-  const cacheDir = join(workspace, '.filecoin-pin-cache', rootCidStr)
-  await writeCachedMetadata(cacheDir, { ...metadata, carPath: artifactCarPath })
+  // Write metadata into context
+  await mergeAndSaveContext(workspace, {
+    network,
+    ipfsRootCid: rootCidStr,
+    pieceCid,
+    pieceId,
+    dataSetId,
+    provider,
+    previewURL,
+    data_set_id: dataSetId,
+    piece_cid: pieceCid,
+    upload_status: 'uploaded',
+    metadata_path: metadataPath,
+    car_path: artifactCarPath,
+    phase: 'upload:done',
+  })
 
   // Set action outputs
   await writeOutputs({
