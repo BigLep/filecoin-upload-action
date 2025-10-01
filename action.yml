@@ -202,9 +202,32 @@ runs:
       if: ${{ inputs.mode == 'build' }}
       shell: bash
       run: |
+        echo "Current directory: $(pwd)"
+        echo "Listing workspace contents:"
+        ls -la
+        echo "CAR path: ${{ steps.compute.outputs.car_path }}"
+
         mkdir -p .filecoin-build-artifact
-        cp "${{ steps.compute.outputs.car_path }}" .filecoin-build-artifact/
-        cp -r .filecoin-build-context .filecoin-build-artifact/
+
+        if [ -f "${{ steps.compute.outputs.car_path }}" ]; then
+          cp "${{ steps.compute.outputs.car_path }}" .filecoin-build-artifact/
+          echo "Copied CAR file"
+        else
+          echo "ERROR: CAR file not found at ${{ steps.compute.outputs.car_path }}"
+          exit 1
+        fi
+
+        if [ -d ".filecoin-build-context" ]; then
+          cp -r .filecoin-build-context .filecoin-build-artifact/
+          echo "Copied context directory"
+        else
+          echo "ERROR: Context directory not found at .filecoin-build-context"
+          ls -la .filecoin-build-* 2>/dev/null || echo "No .filecoin-build-* directories found"
+          exit 1
+        fi
+
+        echo "Artifact contents:"
+        ls -la .filecoin-build-artifact/
 
     - name: Save build artifacts (build mode only)
       if: ${{ inputs.mode == 'build' }}
