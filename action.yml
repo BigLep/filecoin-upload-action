@@ -333,6 +333,7 @@ runs:
 
     - name: Download previous artifact
       if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.find-artifact.outputs.artifact_id != '' }}
+      continue-on-error: true
       uses: actions/download-artifact@v4
       with:
         name: filecoin-pin-${{ steps.compute.outputs.ipfs_root_cid || steps.build-context.outputs.root_cid }}
