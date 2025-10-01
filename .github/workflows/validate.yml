@@ -28,7 +28,7 @@ jobs:
         continue-on-error: true
         with:
           mode: build  # Explicitly set build mode
-          path: .
+          path: ./examples
 
       - name: Check validation result
         if: always()
