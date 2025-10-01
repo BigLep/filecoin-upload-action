@@ -7,7 +7,7 @@ import { join } from 'node:path'
 
 async function main() {
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
-  const contextPath = join(workspace, 'filecoin-build-restore/.filecoin-build-context/build-context.json')
+  const contextPath = join(workspace, 'filecoin-build-restore/.filecoin-build-artifact/.filecoin-build-context/build-context.json')
 
   let context
   try {

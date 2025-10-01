@@ -197,14 +197,21 @@ runs:
           }
       run: node save-build-context.js
 
+    # Organize files for artifact upload (ensure all paths are relative to workspace)
+    - name: Prepare artifact contents (build mode)
+      if: ${{ inputs.mode == 'build' }}
+      shell: bash
+      run: |
+        mkdir -p .filecoin-build-artifact
+        cp "${{ steps.compute.outputs.car_path }}" .filecoin-build-artifact/
+        cp -r .filecoin-build-context .filecoin-build-artifact/
+
     - name: Save build artifacts (build mode only)
       if: ${{ inputs.mode == 'build' }}
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.artifact-name.outputs.name }}
-        path: |
-          ${{ steps.compute.outputs.car_path }}
-          .filecoin-build-context/build-context.json
+        path: .filecoin-build-artifact
         retention-days: 1
 
     # Build mode complete (just a notice)
@@ -361,7 +368,7 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: upload
-        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || './filecoin-build-restore/*.car' }}
+        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || './filecoin-build-restore/.filecoin-build-artifact/*.car' }}
         PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid || steps.build-context.outputs.root_cid }}
       run: |
         node run.mjs
