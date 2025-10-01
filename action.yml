@@ -258,6 +258,7 @@ runs:
       with:
         name: ${{ steps.upload-artifact-name.outputs.name }}
         run-id: ${{ inputs.build_run_id || github.event.workflow_run.id }}
+        github-token: ${{ inputs.github_token || github.token }}
         path: ./filecoin-build-restore
 
     # Download PR metadata if available (upload mode)
@@ -268,6 +269,7 @@ runs:
       with:
         name: ${{ steps.upload-artifact-name.outputs.name }}-metadata
         run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ inputs.github_token || github.token }}
         path: ./filecoin-action-metadata
 
     # Auto-detect PR number from metadata
