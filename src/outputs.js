@@ -44,22 +44,30 @@ export async function writeSummary(context, status) {
     const provider = context?.provider || {}
     const previewURL = context?.preview_url || ''
     const carPath = context?.car_path || ''
-    const metadataPath = context?.metadata_path || ''
+    const paymentStatus = context?.payment_status || {}
+
+    // Generate CAR download link
+    const carDownloadUrl = carPath ? `[download link](${carPath})` : 'download'
 
     const md = [
       '## Filecoin Pin Upload',
       '',
-      `- Network: ${network}`,
-      `- IPFS Root CID: \`${ipfsRootCid}\``,
-      `- Data Set ID: ${dataSetId}`,
-      `- Piece CID: ${pieceCid}`,
-      `- Provider: ${provider?.name || ''} (ID ${provider?.id || ''})`,
-      `- Preview: ${previewURL}`,
-      `- Status: ${status}`,
+      '**IPFS Artifacts:**',
+      `* IPFS Root CID: ${ipfsRootCid}`,
+      `* Status: ${status}`,
+      `* Generated CAR on GitHub: ${carDownloadUrl}`,
       '',
-      'Artifacts:',
-      `- CAR: ${carPath}`,
-      `- Metadata: ${metadataPath}`,
+      '**Onchain verification:**',
+      `* Network: ${network}`,
+      `* Data Set ID: [${dataSetId}](https://pdp.vxb.ai/${network || 'mainnet'}/proofsets/${dataSetId})`,
+      `* Piece CID: [${pieceCid}](https://pdp.vxb.ai/${network || 'mainnet'}/proofsets/${dataSetId})`,
+      `* Provider: [${provider?.name || 'Unknown'} (ID ${provider?.id || 'Unknown'})](https://pdp.vxb.ai/${network || 'mainnet'}/providers/${provider?.id || ''})`,
+      `* Piece download direct from provider: ${previewURL}`,
+      '',
+      '**Payment:**',
+      `* Current Filecoin Pay balance: ${paymentStatus.currentBalance || 'Unknown'} USDFC`,
+      `* Amount deposited to Filecoin Pay by this workflow: ${paymentStatus.depositedThisRun || '0'} USDFC`,
+      `* Data Set Storage runway (assuming all Filecoin Pay balance is used exclusively for this data set): ${paymentStatus.storageRunway || 'Unknown'}`,
       '',
     ].join('\n')
 

@@ -48,7 +48,7 @@ export async function initializeSynapse(walletPrivateKey, logger) {
 /**
  * Handle payment setup and top-ups
  * @param {any} synapse - Synapse service
- * @param {{ minDays: number, maxBalance?: bigint | undefined, maxTopUp?: bigint }} options - Payment options
+ * @param {{ minDays: number, maxBalance?: bigint | undefined, maxTopUp?: bigint | undefined }} options - Payment options
  * @param {any} logger - Logger instance
  * @returns {Promise<any>} Updated payment status
  */

@@ -1,6 +1,7 @@
 import { access, copyFile, mkdir, readdir, readFile, rm, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Octokit } from '@octokit/rest'
+import { ethers } from 'ethers'
 import pc from 'picocolors'
 import pino from 'pino'
 import { downloadBuildArtifact, restoreCache, saveCache, uploadResultArtifact } from './artifacts.js'
@@ -344,15 +345,34 @@ export async function runUpload() {
     })
 
     // Ensure balances are correct even when reusing
+    let paymentStatus = null
     try {
       if (walletPrivateKey) {
         const synapse = await initializeSynapse(walletPrivateKey, logger)
-        await handlePayments(synapse, { minDays, maxBalance, ...(maxTopUp !== undefined && { maxTopUp }) }, logger)
+        paymentStatus = await handlePayments(synapse, { minDays, maxBalance, maxTopUp }, logger)
       }
     } catch (error) {
       console.warn('Balance validation failed:', getErrorMessage(error))
     } finally {
       await cleanupSynapse()
+    }
+
+    // Update context with payment status if available
+    if (paymentStatus) {
+      await mergeAndSaveContext(workspace, {
+        payment_status: {
+          depositedAmount: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
+          currentBalance: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
+          storageRunway: paymentStatus?.runway ? `${paymentStatus.runway} days` : 'Unknown',
+          depositedThisRun: paymentStatus?.depositedAmount
+            ? ethers.formatUnits(paymentStatus.depositedAmount, 18)
+            : '0',
+        },
+      })
+      // Reload context after payment status update
+      ctx = await loadContext(workspace)
+    } else {
+      console.warn('No payment status found')
     }
 
     await writeSummary(ctx, uploadStatus === 'reused-artifact' ? 'Reused artifact' : 'Reused cache')
@@ -364,6 +384,7 @@ export async function runUpload() {
       dataSetId: ctx.data_set_id || '',
       pieceCid: ctx.piece_cid || '',
       uploadStatus,
+      previewUrl: ctx.preview_url,
       ...(prNumber !== undefined && { prNumber }),
       githubToken: process.env.GITHUB_TOKEN || getInput('github_token') || '',
       githubRepository: process.env.GITHUB_REPOSITORY || '',
@@ -400,7 +421,7 @@ export async function runUpload() {
     throw new Error('walletPrivateKey is required for upload mode')
   }
   const synapse = await initializeSynapse(walletPrivateKey, logger)
-  await handlePayments(synapse, { minDays, maxBalance, ...(maxTopUp !== undefined && { maxTopUp }) }, logger)
+  const paymentStatus = await handlePayments(synapse, { minDays, maxBalance, maxTopUp }, logger)
 
   const uploadResult = /** @type {UploadResult} */ (
     await uploadCarToFilecoin(synapse, carPath, rootCid, { withCDN, providerAddress }, logger)
@@ -430,6 +451,12 @@ export async function runUpload() {
     upload_status: 'uploaded',
     metadata_path: metadataPath,
     car_path: artifactCarPath,
+    payment_status: {
+      depositedAmount: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
+      currentBalance: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
+      storageRunway: paymentStatus?.runway ? `${paymentStatus.runway} days` : 'Unknown',
+      depositedThisRun: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
+    },
   })
 
   // Save cache
@@ -473,6 +500,7 @@ export async function runUpload() {
     dataSetId,
     pieceCid,
     uploadStatus: 'uploaded',
+    previewUrl: ctx.preview_url,
     ...(prNumber !== undefined && { prNumber }),
     githubToken: process.env.GITHUB_TOKEN || getInput('github_token') || '',
     githubRepository: process.env.GITHUB_REPOSITORY || '',

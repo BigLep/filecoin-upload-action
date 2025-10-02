@@ -37,6 +37,12 @@ export interface CombinedContext {
   with_cdn?: boolean
   provider_address?: string
   preview_url?: string
+  payment_status?: {
+    depositedAmount?: string
+    currentBalance?: string
+    storageRunway?: string
+    depositedThisRun?: string
+  }
 }
 
 export interface ParsedInputs {
@@ -80,9 +86,14 @@ export interface CommentPRParams {
   dataSetId: string
   pieceCid: string
   uploadStatus: string
+  /**
+   * The piece CID preview URL, directly from the provider
+   */
+  previewUrl?: string | undefined
   prNumber?: number
   githubToken: string
   githubRepository: string
+  network?: string | undefined
 }
 
 export interface PaymentConfig {
@@ -110,8 +121,8 @@ export interface PrCommentContext {
   ipfsRootCid: string
   dataSetId: string
   pieceCid: string
-  // statusLine: string
-  previewUrl: string
+  previewUrl?: string | undefined
+  network?: string | undefined
 }
 
 export interface PrCommentTemplate {

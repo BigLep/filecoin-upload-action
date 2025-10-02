@@ -23,7 +23,23 @@ const COMMENT_HEADER = '<!-- filecoin-pin-upload-action -->'
  * @returns {string}
  */
 function statusLine(ctx) {
-  return `- Status: ${statusMessages[ctx.uploadStatus] || 'Unknown (see job logs)'}`
+  return `* Status: ${statusMessages[ctx.uploadStatus] || 'Unknown (see job logs)'}`
+}
+
+/**
+ * Generate workflow run URL
+ * @returns {string}
+ */
+function getWorkflowRunUrl() {
+  const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
+  const repository = process.env.GITHUB_REPOSITORY || ''
+  const runId = process.env.GITHUB_RUN_ID || ''
+
+  if (!repository || !runId) {
+    return 'link to workflow run'
+  }
+
+  return `${serverUrl}/${repository}/actions/runs/${runId}`
 }
 
 /**
@@ -34,14 +50,12 @@ export const commentTemplates = {
     heading: 'Filecoin Pin Upload ✅',
     sections: [
       (ctx) => [
-        `- IPFS Root CID: \`${ctx.ipfsRootCid}\``,
-        `- Data Set ID: \`${ctx.dataSetId}\``,
-        `- Piece CID: \`${ctx.pieceCid}\``,
-      ],
-      (ctx) => [statusLine(ctx)],
-      (ctx) => [
-        '- Preview (temporary centralized gateway):',
-        `  - ${ctx.ipfsRootCid ? `https://ipfs.io/ipfs/${ctx.ipfsRootCid}` : 'Preview unavailable'}`,
+        `* IPFS Root CID: ${ctx.ipfsRootCid}`,
+        `* IPFS HTTP Gateway Preview: ${ctx.ipfsRootCid ? `https://dweb.link/ipfs/${ctx.ipfsRootCid}` : 'IPFS Root CID unavailable'}`,
+        `* Filecoin Onchain Cloud verification: <a href="https://pdp.vxb.ai/${ctx.network || 'mainnet'}/proofsets/${ctx.dataSetId}">Data Set ID: ${ctx.dataSetId} / Piece CID: ${ctx.pieceCid}</a>`,
+        statusLine(ctx),
+        '',
+        `<a href="${getWorkflowRunUrl()}">More details</a>`,
       ],
     ],
   },
