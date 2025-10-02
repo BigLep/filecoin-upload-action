@@ -139,13 +139,16 @@ export async function restoreCache(_workspace, cacheKey, contextPath, buildRunId
     }
 
     // First, get the artifact by name to get its ID from the build workflow run
+    const workflowRunId = Number.parseInt(buildRunId, 10)
+    if (!Number.isFinite(workflowRunId)) {
+      console.log(`Invalid build run ID for cache restore: ${buildRunId}`)
+      return false
+    }
+
+    const findBy = { token, workflowRunId, repositoryOwner, repositoryName }
+
     const artifacts = await artifact.listArtifacts({
-      findBy: {
-        token,
-        workflowRunId: parseInt(buildRunId, 10),
-        repositoryOwner,
-        repositoryName,
-      },
+      findBy,
     })
     const targetArtifact = artifacts.artifacts.find((a) => a.name === artifactName)
 
@@ -156,6 +159,7 @@ export async function restoreCache(_workspace, cacheKey, contextPath, buildRunId
 
     const _downloadResponse = await artifact.downloadArtifact(targetArtifact.id, {
       path: contextPath,
+      findBy,
     })
 
     console.log(`Restored cache: ${cacheKey}`)
@@ -194,13 +198,17 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
     }
 
     // First, get the artifact by name to get its ID from the build workflow run
+    const workflowRunId = Number.parseInt(buildRunId, 10)
+    if (!Number.isFinite(workflowRunId)) {
+      throw new Error(`Invalid workflow run ID: ${buildRunId}`)
+    }
+
+    console.log(`Fetching artifact list for workflow run ${workflowRunId} in repository ${repoFull}`)
+
+    const findBy = { token, workflowRunId, repositoryOwner, repositoryName }
+
     const artifacts = await artifact.listArtifacts({
-      findBy: {
-        token,
-        workflowRunId: parseInt(buildRunId, 10),
-        repositoryOwner,
-        repositoryName,
-      },
+      findBy,
     })
     const targetArtifact = artifacts.artifacts.find((a) => a.name === artifactName)
 
@@ -208,8 +216,11 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
       throw new Error(`Artifact ${artifactName} not found`)
     }
 
+    console.log(`Found ${artifacts.artifacts.length} artifact(s)`)
+
     const _downloadResponse = await artifact.downloadArtifact(targetArtifact.id, {
       path: ctxDir,
+      findBy,
     })
 
     console.log(`Downloaded and extracted artifact ${artifactName}`)
