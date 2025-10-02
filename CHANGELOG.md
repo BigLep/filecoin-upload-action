@@ -1,3 +1,9 @@
+## [1.0.9](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.8...v1.0.9) (2025-10-02)
+
+### Bug Fixes
+
+* car download link and balance display correctly ([e74ddd7](https://github.com/SgtPooki/filecoin-upload-action/commit/e74ddd720dfe72b906de2e77c0b7332299a4f8c1))
+
 ## [1.0.8](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.7...v1.0.8) (2025-10-02)
 
 ### Bug Fixes
