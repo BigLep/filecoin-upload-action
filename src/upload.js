@@ -247,7 +247,7 @@ export async function runUpload() {
   // Try to restore cache first
   const ctxDir = join(workspace, 'action-context')
   const cacheKey = `filecoin-v1-${rootCid}`
-  const cacheRestored = await restoreCache(workspace, cacheKey, ctxDir, buildRunId)
+  const cacheRestored = await restoreCache(workspace, cacheKey, buildRunId)
 
   // If cache restored, reload context
   if (cacheRestored) {

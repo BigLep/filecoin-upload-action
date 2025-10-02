@@ -109,12 +109,11 @@ export async function saveCache(workspace, cacheKey, contextPath) {
 
 /**
  * Restore cache using GitHub API
- * @param {string} _workspace
+ * @param {string} workspace
  * @param {string} cacheKey
- * @param {string} contextPath
  * @param {string} buildRunId
  */
-export async function restoreCache(_workspace, cacheKey, contextPath, buildRunId) {
+export async function restoreCache(workspace, cacheKey, buildRunId) {
   const artifactName = `cache-${cacheKey}`
 
   try {
@@ -158,7 +157,7 @@ export async function restoreCache(_workspace, cacheKey, contextPath, buildRunId
     }
 
     const _downloadResponse = await artifact.downloadArtifact(targetArtifact.id, {
-      path: contextPath,
+      path: workspace,
       findBy,
     })
 
@@ -219,7 +218,7 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
     console.log(`Found ${artifacts.artifacts.length} artifact(s)`)
 
     const _downloadResponse = await artifact.downloadArtifact(targetArtifact.id, {
-      path: ctxDir,
+      path: workspace,
       findBy,
     })
 
