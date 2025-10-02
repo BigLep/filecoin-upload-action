@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.0...v1.0.1) (2025-10-02)
+
+### Bug Fixes
+
+* temporarily disable fork prs ([#4](https://github.com/SgtPooki/filecoin-upload-action/issues/4)) ([a06530a](https://github.com/SgtPooki/filecoin-upload-action/commit/a06530a087514d63bc13cb312c4b1239bade5e85))
+
 ## 1.0.0 (2025-10-02)
 
 ### ⚠ BREAKING CHANGES
