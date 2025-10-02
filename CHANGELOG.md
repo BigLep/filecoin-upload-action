@@ -1,3 +1,9 @@
+## [1.0.4](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.3...v1.0.4) (2025-10-02)
+
+### Bug Fixes
+
+* fork PRs build artifacts in base repo ([132f21f](https://github.com/SgtPooki/filecoin-upload-action/commit/132f21fa191ed50c603b989c782776fe79462c1c))
+
 ## [1.0.3](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.2...v1.0.3) (2025-10-02)
 
 ### Bug Fixes
