@@ -1,3 +1,9 @@
+## [1.0.10](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.9...v1.0.10) (2025-10-02)
+
+### Bug Fixes
+
+* display car file size ([d0b874d](https://github.com/SgtPooki/filecoin-upload-action/commit/d0b874d4db5bb18fc4cff4789947ecd0c5ddd9d8))
+
 ## [1.0.9](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.8...v1.0.9) (2025-10-02)
 
 ### Bug Fixes
