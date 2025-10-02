@@ -156,5 +156,3 @@ runs:
         INPUTS_JSON: ${{ toJson(inputs) }}
         GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
       run: node src/run.mjs
-
-
