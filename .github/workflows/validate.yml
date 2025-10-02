@@ -2,9 +2,9 @@ name: Validate Action
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 permissions:
   actions: write
@@ -40,7 +40,7 @@ jobs:
       - name: Run yamllint
         uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # v3.1.1
         with:
-          file_or_dir: action.yml examples/
+          file_or_dir: action.yml examples/ .github
           format: github
           strict: true
           # .yamllint config file is automatically used
@@ -73,4 +73,3 @@ jobs:
             echo "⚠️ Action was skipped or cancelled"
             exit 1
           fi
-
