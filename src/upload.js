@@ -237,16 +237,7 @@ export async function runUpload() {
     await writeSummary(ctx, 'Fork PR blocked')
 
     // Comment on PR with the actual IPFS Root CID
-    const prNumber = ctx.pr?.number
-    await commentOnPR({
-      ipfsRootCid: rootCid,
-      dataSetId: '',
-      pieceCid: '',
-      uploadStatus: 'fork-pr-blocked',
-      ...(prNumber !== undefined && { prNumber }),
-      githubToken: process.env.GITHUB_TOKEN || getInput('github_token') || '',
-      githubRepository: process.env.GITHUB_REPOSITORY || '',
-    })
+    await commentOnPR(ctx)
 
     console.log('✓ Fork PR blocked - PR comment posted explaining the limitation')
     return
@@ -338,17 +329,7 @@ export async function runUpload() {
     await writeSummary(ctx, uploadStatus === 'reused-artifact' ? 'Reused artifact' : 'Reused cache')
 
     // Comment on PR
-    const prNumber = ctx.pr?.number
-    await commentOnPR({
-      ipfsRootCid: ctx.ipfs_root_cid || '',
-      dataSetId: ctx.data_set_id || '',
-      pieceCid: ctx.piece_cid || '',
-      uploadStatus,
-      previewUrl: ctx.preview_url,
-      ...(prNumber !== undefined && { prNumber }),
-      githubToken: process.env.GITHUB_TOKEN || getInput('github_token') || '',
-      githubRepository: process.env.GITHUB_REPOSITORY || '',
-    })
+    await commentOnPR(ctx)
 
     console.log(`✓ ${uploadStatus === 'reused-artifact' ? 'Reused previous artifact' : 'Reused cached upload'}`)
     console.log(`::notice::${uploadStatus === 'reused-artifact' ? 'Reused previous artifact' : 'Reused cached upload'}`)
@@ -458,17 +439,7 @@ export async function runUpload() {
   await writeSummary(ctx, 'Uploaded')
 
   // Comment on PR
-  const prNumber = ctx.pr?.number
-  await commentOnPR({
-    ipfsRootCid: rootCid,
-    dataSetId,
-    pieceCid,
-    uploadStatus: 'uploaded',
-    previewUrl: ctx.preview_url,
-    ...(prNumber !== undefined && { prNumber }),
-    githubToken: process.env.GITHUB_TOKEN || getInput('github_token') || '',
-    githubRepository: process.env.GITHUB_REPOSITORY || '',
-  })
+  await commentOnPR(ctx)
 
   await cleanupSynapse()
 }

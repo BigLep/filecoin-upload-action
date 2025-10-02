@@ -118,19 +118,3 @@ export interface ArtifactUploadOptions {
 export interface ArtifactDownloadOptions {
   path: string
 }
-
-export interface PrCommentContext {
-  uploadStatus: string
-  ipfsRootCid: string
-  dataSetId: string
-  pieceCid: string
-  previewUrl?: string | undefined
-  network?: string | undefined
-}
-
-export interface PrCommentTemplate {
-  heading: string
-  sections: ((ctx: PrCommentContext) => string[])[]
-}
-
-export type PrCommentTemplateKeys = 'success' | 'fork-pr-blocked'

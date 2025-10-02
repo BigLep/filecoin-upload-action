@@ -48,44 +48,56 @@ export async function writeOutputs(outputs) {
 export async function writeSummary(context, status) {
   try {
     const summaryFile = process.env.GITHUB_STEP_SUMMARY
-    if (!summaryFile) return
+    if (!summaryFile) {
+      console.warn('No summary file found, GITHUB_STEP_SUMMARY is not set')
+      return
+    }
 
-    const network = context?.network || ''
-    const ipfsRootCid = context?.ipfs_root_cid || ''
-    const dataSetId = context?.data_set_id || ''
-    const pieceCid = context?.piece_cid || ''
-    const provider = context?.provider || {}
-    const previewURL = context?.preview_url || ''
-    const carPath = context?.car_path || ''
-    const carSize = context?.car_size
-    const carDownloadUrl = context?.car_download_url || (carPath ? `[download link](${carPath})` : 'download')
-    const paymentStatus = context?.payment_status || {}
-
-    const md = [
-      '## Filecoin Pin Upload',
-      '',
-      '**IPFS Artifacts:**',
-      `* IPFS Root CID: ${ipfsRootCid}`,
-      `* Status: ${status}`,
-      `* Generated CAR on GitHub: ${carDownloadUrl}`,
-      `* CAR file size: ${formatSize(carSize)}`,
-      '',
-      '**Onchain verification:**',
-      `* Network: ${network}`,
-      `* Data Set ID: [${dataSetId}](https://pdp.vxb.ai/${network || 'mainnet'}/proofsets/${dataSetId})`,
-      `* Piece CID: [${pieceCid}](https://pdp.vxb.ai/${network || 'mainnet'}/proofsets/${dataSetId})`,
-      `* Provider: [${provider?.name || 'Unknown'} (ID ${provider?.id || 'Unknown'})](https://pdp.vxb.ai/${network || 'mainnet'}/providers/${provider?.id || ''})`,
-      `* Piece download direct from provider: ${previewURL}`,
-      '',
-      '**Payment:**',
-      `* Current Filecoin Pay balance: ${paymentStatus.currentBalance || 'Unknown'} USDFC`,
-      `* Amount deposited to Filecoin Pay by this workflow: ${paymentStatus.depositedThisRun || '0'} USDFC`,
-      `* Data Set Storage runway (assuming all Filecoin Pay balance is used exclusively for this data set): ${paymentStatus.storageRunway || 'Unknown'}`,
-      '',
-    ].join('\n')
-
-    await fs.appendFile(summaryFile, `\n${md}\n`)
+    await fs.appendFile(summaryFile, `\n${getOutputSummary(context, status)}\n`)
   } catch (error) {
     console.error('Failed to write summary:', getErrorMessage(error))
   }
+}
+
+/**
+ * Get the output summary
+ * @param {CombinedContext} context - Combined context data
+ * @param {string} status - Upload status
+ * @returns {string} The output summary
+ */
+export function getOutputSummary(context, status) {
+  const network = context?.network || ''
+  const ipfsRootCid = context?.ipfs_root_cid || ''
+  const dataSetId = context?.data_set_id || ''
+  const pieceCid = context?.piece_cid || ''
+  const provider = context?.provider || {}
+  const previewURL = context?.preview_url || ''
+  const carPath = context?.car_path || ''
+  const carSize = context?.car_size
+  const carDownloadUrl = context?.car_download_url || (carPath ? `[download link](${carPath})` : 'download')
+  const paymentStatus = context?.payment_status || {}
+
+  return [
+    '## Filecoin Pin Upload',
+    '',
+    '**IPFS Artifacts:**',
+    `* IPFS Root CID: ${ipfsRootCid}`,
+    `* IPFS HTTP Gateway Preview: ${ipfsRootCid ? `https://dweb.link/ipfs/${ipfsRootCid}` : 'IPFS Root CID unavailable'}`,
+    `* Status: ${status}`,
+    `* Generated CAR on GitHub: ${carDownloadUrl}`,
+    `* CAR file size: ${formatSize(carSize)}`,
+    '',
+    '**Onchain verification:**',
+    `* Network: ${network}`,
+    `* Data Set ID: [${dataSetId}](https://pdp.vxb.ai/${network || 'mainnet'}/proofsets/${dataSetId})`,
+    `* Piece CID: [${pieceCid}](https://pdp.vxb.ai/${network || 'mainnet'}/proofsets/${dataSetId})`,
+    `* Provider: [${provider?.name || 'Unknown'} (ID ${provider?.id || 'Unknown'})](https://pdp.vxb.ai/${network || 'mainnet'}/providers/${provider?.id || ''})`,
+    `* Piece download direct from provider: ${previewURL}`,
+    '',
+    '**Payment:**',
+    `* Current Filecoin Pay balance: ${paymentStatus.currentBalance || 'Unknown'} USDFC`,
+    `* Amount deposited to Filecoin Pay by this workflow: ${paymentStatus.depositedThisRun || '0'} USDFC`,
+    `* Data Set Storage runway (assuming all Filecoin Pay balance is used exclusively for this data set): ${paymentStatus.storageRunway || 'Unknown'}`,
+    '',
+  ].join('\n')
 }

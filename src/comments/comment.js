@@ -1,50 +1,52 @@
 import { Octokit } from '@octokit/rest'
 import { loadContext } from '../context.js'
 import { getErrorMessage } from '../errors.js'
-import { getCommentTemplate, renderTemplate } from './templates.js'
+import { getInput } from '../inputs.js'
+import { getOutputSummary } from '../outputs.js'
 
 /**
- * @typedef {import('../types.js').PrCommentContext} PrCommentContext
- * @typedef {import('../types.js').PrCommentTemplateKeys} PrCommentTemplateKeys
+ * @typedef {import('../types.js').CommentPRParams} CommentPRParams
+ * @typedef {import('../types.js').CombinedContext} CombinedContext
  */
 
 /**
  * Generate comment body based on upload status
- * @param {Pick<CommentPRParams, 'uploadStatus' | 'ipfsRootCid' | 'dataSetId' | 'pieceCid' | 'previewUrl' | 'network'>} param0
+ * @param {CombinedContext} context
  * @returns
  */
-const generateCommentBody = ({ uploadStatus, ipfsRootCid, dataSetId, pieceCid, previewUrl, network }) => {
-  const template = getCommentTemplate(/** @type {PrCommentTemplateKeys} */ (uploadStatus))
-  /**
-   * @type {PrCommentContext}
-   */
-  const context = {
-    uploadStatus,
-    ipfsRootCid,
-    dataSetId,
-    pieceCid,
-    previewUrl,
-    network,
-  }
-
-  return renderTemplate(template, context)
+const generateCommentBody = (context) => {
+  return `${getOutputSummary(context, 'Uploaded')}
+  <a href="${getWorkflowRunUrl()}">More details</a>`
 }
 
-// Import types for JSDoc
 /**
- * @typedef {import('../types.js').CommentPRParams} CommentPRParams
+ * Generate workflow run URL
+ * @returns {string}
  */
+function getWorkflowRunUrl() {
+  const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com'
+  const repository = process.env.GITHUB_REPOSITORY || ''
+  const runId = process.env.GITHUB_RUN_ID || ''
+
+  if (!repository || !runId) {
+    return 'link to workflow run'
+  }
+
+  return `${serverUrl}/${repository}/actions/runs/${runId}`
+}
 
 /**
  * Comment on PR with Filecoin upload results
- * @param {CommentPRParams} params
+ * @param {CombinedContext} ctx
  */
-export async function commentOnPR(params) {
-  /** @type {CommentPRParams} */
-  let { ipfsRootCid, dataSetId, pieceCid, uploadStatus, previewUrl, prNumber, githubToken, githubRepository } = params
+export async function commentOnPR(ctx) {
   // Try to get PR number from parameter or context
+  let { ipfs_root_cid, data_set_id, piece_cid, pr } = ctx
+  const github_token = process.env.GITHUB_TOKEN || getInput('github_token') || ''
+  const github_repository = process.env.GITHUB_REPOSITORY || ''
+
   /** @type {number | undefined} */
-  let resolvedPrNumber = prNumber
+  let resolvedPrNumber = pr?.number
   if (!resolvedPrNumber) {
     const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
     const ctx = await loadContext(workspace)
@@ -57,44 +59,34 @@ export async function commentOnPR(params) {
     resolvedPrNumber = envPrNumber ? parseInt(envPrNumber, 10) : undefined
   }
 
-  if (!ipfsRootCid || !dataSetId || !pieceCid || !resolvedPrNumber || !githubToken || !githubRepository) {
+  if (!ipfs_root_cid || !data_set_id || !piece_cid || !resolvedPrNumber) {
     console.log('Skipping PR comment: missing required information (likely not a PR event)')
     return
   }
 
   // Check if this is a fork PR that was blocked
-  const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
-  const ctx = await loadContext(workspace)
+  // const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
 
   // If this is a fork PR that was blocked, we need to comment with explanation
   if (ctx.pr && ctx.upload_status === 'fork-pr-blocked') {
     console.log('Posting comment for blocked fork PR')
-    // Override the upload status for the comment
-    uploadStatus = 'fork-pr-blocked'
     // Set dummy values so the comment function doesn't skip
-    if (!ipfsRootCid) ipfsRootCid = 'N/A (fork PR blocked)'
-    if (!dataSetId) dataSetId = 'N/A (fork PR blocked)'
-    if (!pieceCid) pieceCid = 'N/A (fork PR blocked)'
+    if (!ipfs_root_cid) ipfs_root_cid = 'N/A (fork PR blocked)'
+    if (!data_set_id) data_set_id = 'N/A (fork PR blocked)'
+    if (!piece_cid) piece_cid = 'N/A (fork PR blocked)'
   }
 
-  const [owner, repo] = githubRepository.split('/')
+  const [owner, repo] = github_repository.split('/')
   const issue_number = resolvedPrNumber
 
   if (!owner || !repo) {
-    console.error('Invalid repository format:', githubRepository)
+    console.error('Invalid repository format:', github_repository)
     return
   }
 
-  const octokit = new Octokit({ auth: githubToken })
+  const octokit = new Octokit({ auth: github_token })
 
-  const body = generateCommentBody({
-    uploadStatus,
-    ipfsRootCid,
-    dataSetId,
-    pieceCid,
-    previewUrl,
-    network: ctx.network,
-  })
+  const body = generateCommentBody(ctx)
 
   try {
     // Find existing comment
