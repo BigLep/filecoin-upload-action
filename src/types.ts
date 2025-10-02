@@ -7,6 +7,7 @@ export interface CombinedContext {
   car_path?: string
   car_filename?: string
   car_download_url?: string
+  car_size?: number | undefined
   artifact_name?: string
   build_run_id?: string
   event_name?: string
@@ -80,6 +81,7 @@ export interface BuildResult {
   contentPath: string
   carPath: string
   ipfsRootCid: string
+  carSize?: number | undefined
 }
 
 export interface CommentPRParams {

@@ -167,7 +167,18 @@ export async function createCarFile(targetPath, contentPath, logger) {
       )
     }
 
-    return { carPath, ipfsRootCid: rootCid.toString(), contentPath }
+    // Get CAR file size from filesystem since stats are not returned in the interface
+    let carSize
+    if (carPath) {
+      try {
+        const stat = await fs.stat(carPath)
+        carSize = stat.size
+      } catch (error) {
+        logger.warn(`Failed to get CAR file size: ${getErrorMessage(error)}`)
+      }
+    }
+
+    return { carPath, ipfsRootCid: rootCid.toString(), contentPath, carSize }
   } catch (error) {
     throw new FilecoinPinError(`Failed to create CAR file: ${getErrorMessage(error)}`, ERROR_CODES.CAR_CREATE_FAILED)
   }

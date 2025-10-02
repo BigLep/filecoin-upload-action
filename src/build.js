@@ -6,7 +6,7 @@ import pino from 'pino'
 import { determineArtifactName, readEventPayload, uploadBuildArtifact } from './artifacts.js'
 import { contextWithCar, mergeAndSaveContext } from './context.js'
 import { createCarFile } from './filecoin.js'
-import { writeOutputs } from './outputs.js'
+import { formatSize, writeOutputs } from './outputs.js'
 
 // Import types for JSDoc
 /**
@@ -116,9 +116,14 @@ export async function runBuild() {
 
   // Create CAR file
   const buildResult = /** @type {BuildResult} */ (await createCarFile(targetPath, contentPath, logger))
-  const { carPath, ipfsRootCid } = buildResult
+  const { carPath, ipfsRootCid, carSize } = buildResult
   console.log(`IPFS Root CID: ${pc.bold(ipfsRootCid)}`)
   console.log(`::notice::IPFS Root CID: ${ipfsRootCid}`)
+
+  if (carSize) {
+    console.log(`CAR file size: ${pc.bold(formatSize(carSize))}`)
+    console.log(`::notice::CAR file size: ${formatSize(carSize)}`)
+  }
 
   // Determine artifact name
   const artifactName = await determineArtifactName()
@@ -144,6 +149,7 @@ export async function runBuild() {
   // Update context with CID and CAR info
   await mergeAndSaveContext(workspace, {
     ipfs_root_cid: ipfsRootCid,
+    car_size: carSize,
     upload_status: uploadStatus,
   })
 

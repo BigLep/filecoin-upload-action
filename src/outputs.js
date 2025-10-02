@@ -7,6 +7,19 @@ import { getErrorMessage } from './errors.js'
  */
 
 /**
+ * Format file size in bytes to human-readable string
+ * @param {number | undefined} size - Size in bytes
+ * @returns {string} Formatted size string
+ */
+export function formatSize(size) {
+  if (!size) return 'Unknown'
+  if (size < 1024) return `${size} bytes`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
+/**
  * Write output to GitHub Actions output file
  * @param {string} name - Output name
  * @param {any} value - Output value
@@ -44,6 +57,7 @@ export async function writeSummary(context, status) {
     const provider = context?.provider || {}
     const previewURL = context?.preview_url || ''
     const carPath = context?.car_path || ''
+    const carSize = context?.car_size
     const carDownloadUrl = context?.car_download_url || (carPath ? `[download link](${carPath})` : 'download')
     const paymentStatus = context?.payment_status || {}
 
@@ -54,6 +68,7 @@ export async function writeSummary(context, status) {
       `* IPFS Root CID: ${ipfsRootCid}`,
       `* Status: ${status}`,
       `* Generated CAR on GitHub: ${carDownloadUrl}`,
+      `* CAR file size: ${formatSize(carSize)}`,
       '',
       '**Onchain verification:**',
       `* Network: ${network}`,
