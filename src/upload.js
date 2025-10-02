@@ -49,6 +49,7 @@ async function determineArtifactName(eventOverride) {
   const manualOverride = getInput('artifact_name')
   if (manualOverride) {
     console.log(`Using manually provided artifact name: ${manualOverride}`)
+    console.log(`::notice::Using manually provided artifact name: ${manualOverride}`)
     return manualOverride
   }
 
@@ -58,14 +59,20 @@ async function determineArtifactName(eventOverride) {
   const workflowRunId = event.workflow_run?.id
 
   if (workflowRunPrNumber) {
-    return `filecoin-build-pr-${workflowRunPrNumber}`
+    const artifactName = `filecoin-build-pr-${workflowRunPrNumber}`
+    console.log(`::notice::Auto-detected artifact name from workflow_run PR: ${artifactName}`)
+    return artifactName
   }
   if (workflowRunId) {
-    return `filecoin-build-${workflowRunId}`
+    const artifactName = `filecoin-build-${workflowRunId}`
+    console.log(`::notice::Auto-detected artifact name from workflow_run: ${artifactName}`)
+    return artifactName
   }
   // Fallback for manual triggers
   console.warn('No artifact_name provided and no workflow_run context. Using fallback.')
-  return `filecoin-build-${runId}`
+  const fallbackName = `filecoin-build-${runId}`
+  console.log(`::notice::Using fallback artifact name: ${fallbackName}`)
+  return fallbackName
 }
 
 /**
@@ -328,11 +335,13 @@ export async function runUpload() {
     })
 
     console.log(`✓ ${uploadStatus === 'reused-artifact' ? 'Reused previous artifact' : 'Reused cached upload'}`)
+    console.log(`::notice::${uploadStatus === 'reused-artifact' ? 'Reused previous artifact' : 'Reused cached upload'}`)
     return
   }
 
   // No reuse found - perform fresh upload
   console.log('No reusable upload found. Performing fresh upload...')
+  console.log('::notice::No reusable upload found. Performing fresh upload...')
 
   // Find CAR file in context
   let carPath = ctx.car_path
@@ -413,6 +422,7 @@ export async function runUpload() {
   console.log(`Network: ${network}`)
   console.log(`IPFS Root CID: ${pc.bold(rootCid)}`)
   console.log(`Data Set ID: ${dataSetId}`)
+  console.log(`::notice::Upload complete. IPFS Root CID: ${rootCid}`)
   console.log(`Piece CID: ${pieceCid}`)
   console.log(`Provider: ${provider.name || 'Unknown'} (ID ${provider.id || 'Unknown'})`)
   console.log(`Preview: ${previewURL}`)

@@ -144,13 +144,21 @@ export async function runBuild() {
   const buildResult = /** @type {BuildResult} */ (await createCarFile(targetPath, contentPath, logger))
   const { carPath, ipfsRootCid } = buildResult
   console.log(`IPFS Root CID: ${pc.bold(ipfsRootCid)}`)
+  console.log(`::notice::IPFS Root CID: ${ipfsRootCid}`)
 
   // Determine artifact name
   const artifactName = await determineArtifactName()
   console.log(`Artifact name: ${artifactName}`)
+  console.log(`::notice::Artifact name: ${artifactName}`)
 
   // Update context with build metadata (PR info, artifact name, etc.)
   await updateBuildMetadata(workspace, artifactName)
+
+  // Add PR metadata annotation if this is a PR
+  const event = await readEventPayload()
+  if (event?.pull_request?.number) {
+    console.log(`::notice::Saved PR metadata for PR #${event.pull_request.number}`)
+  }
 
   // Normalize context: copy CAR into action-context directory
   const normalizedCarPath = await normalizeContextForArtifact(workspace, carPath)
@@ -172,4 +180,5 @@ export async function runBuild() {
   })
 
   console.log('✓ Build complete. CAR and metadata saved and uploaded to artifacts')
+  console.log('::notice::Build mode complete. CAR file created and saved to artifact.')
 }
