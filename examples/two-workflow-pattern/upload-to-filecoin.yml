@@ -31,7 +31,7 @@ jobs:
       # Upload to Filecoin using UPLOAD mode
       # The action automatically finds artifacts, downloads metadata, modifies Filecoin Onchain Cloud deposit, and handles commenting
       - name: Upload to Filecoin
-        uses: sgtpooki/filecoin-upload-action@v1  # Replace with actual version
+        uses: sgtpooki/filecoin-upload-action@v1
         with:
           mode: upload
           artifact_name: ${{ inputs.artifact_name }} # Allow manual override for testing

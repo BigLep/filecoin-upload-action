@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm ci && npm run build
-      - uses: sgtpooki/filecoin-upload-action@<commit-sha>
+      - uses: sgtpooki/filecoin-upload-action@v1
         with:
           path: dist
           # mode: build is the default (secure)
@@ -41,7 +41,7 @@ jobs:
       actions: read
       pull-requests: write
     steps:
-      - uses: sgtpooki/filecoin-upload-action@<commit-sha>
+      - uses: sgtpooki/filecoin-upload-action@v1
         with:
           mode: upload
           walletPrivateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
@@ -49,7 +49,7 @@ jobs:
           maxTopUp: "0.10"  # Hardcoded limit (0.10 USDFC = 10 cents)
 ```
 
-Always pin to a commit SHA (or release tag) for supply-chain safety.
+**Versioning**: This action uses [Semantic Release](https://semantic-release.gitbook.io/) for automated versioning. Use version tags like `@v1`, `@v1.0.0`, or commit SHAs for supply-chain safety.
 
 ## Inputs
 
@@ -83,7 +83,7 @@ Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifac
 
 ## Security & Permissions Checklist
 
-- ✅ Pin the action by commit SHA
+- ✅ Pin the action by version tag or commit SHA
 - ✅ Grant `actions: read` if you want artifact reuse (cache fallback) to work
 - ✅ Protect workflow files with CODEOWNERS/branch protection
 - ✅ **Always** cap spend with `maxTopUp`, especially on `pull_request` events
@@ -103,12 +103,33 @@ Split your CI into untrusted build + trusted upload workflows.
 
 **See [examples/two-workflow-pattern/](./examples/two-workflow-pattern/)** for complete, ready-to-use workflow files.
 
+## Releases & Versioning
+
+This action uses [Semantic Release](https://semantic-release.gitbook.io/) for automated versioning based on [Conventional Commits](https://www.conventionalcommits.org/).
+
+### Available Versions
+
+- **`@v1`** - Latest v1.x.x release (recommended for most users)
+- **`@v1.0.0`** - Specific version (recommended for production)
+- **`@<commit-sha>`** - Specific commit (maximum security)
+
+### Version Bumps
+
+- **Patch** (`1.0.0` → `1.0.1`): Bug fixes, docs, refactoring
+- **Minor** (`1.0.0` → `1.1.0`): New features
+- **Major** (`1.0.0` → `2.0.0`): Breaking changes
+
+### Release Process
+
+Releases are automatically created when changes are pushed to `main` with conventional commit messages. See [CONTRIBUTING.md](./CONTRIBUTING.md) for commit message guidelines.
+
 ## Documentation
 
 - **[examples/two-workflow-pattern/](./examples/two-workflow-pattern/)** - Ready-to-use workflow files (recommended)
 - **[USAGE.md](./USAGE.md)** - Complete usage guide with all patterns
 - **[FLOW.md](./FLOW.md)** - Internal architecture & how the action works under the hood
 - **[examples/README.md](./examples/README.md)** - Detailed setup instructions
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - How to contribute and commit message guidelines
 
 ## Caching & Artifacts
 

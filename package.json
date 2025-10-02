@@ -2,7 +2,7 @@
   "name": "filecoin-pin-upload-action-helper",
   "private": true,
   "type": "module",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Helper runner for Filecoin Pin Upload GitHub Action",
   "dependencies": {
     "@actions/artifact": "^2.3.2",
@@ -14,11 +14,20 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.5",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^11.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^9.2.6",
+    "@semantic-release/npm": "^10.0.4",
+    "@semantic-release/release-notes-generator": "^12.1.0",
+    "semantic-release": "^22.0.12",
     "typescript": "^5.9.3"
   },
   "scripts": {
     "lint": "npm run typecheck && biome check --no-errors-on-unmatched --files-ignore-unknown=true .",
     "lint:fix": "biome check --no-errors-on-unmatched --files-ignore-unknown=true --fix .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "semantic-release": "semantic-release",
+    "dry-run": "semantic-release --dry-run"
   }
 }

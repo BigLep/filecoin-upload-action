@@ -30,7 +30,7 @@ jobs:
       # The action automatically saves PR metadata and generates artifact names
       - name: Build CAR file
         id: build
-        uses: sgtpooki/filecoin-upload-action@v1  # Replace with actual version
+        uses: sgtpooki/filecoin-upload-action@v1
         with:
           # mode: build is the default, but can be specified explicitly
           path: dist
