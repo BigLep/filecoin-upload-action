@@ -1,214 +1,179 @@
-import { promises as fs } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { Octokit } from '@octokit/rest'
-import { getInput } from './inputs.js'
+import { DefaultArtifactClient } from '@actions/artifact'
+import { getErrorMessage } from './errors.js'
 
 /**
  * Upload build artifact using GitHub API
+ * @param {string} workspace
+ * @param {string} artifactName
+ * @param {number} retentionDays
  */
 export async function uploadBuildArtifact(workspace, artifactName, retentionDays = 1) {
-  const token = process.env.GITHUB_TOKEN || getInput('github_token')
-  const repoFull = process.env.GITHUB_REPOSITORY
-
-  if (!token || !repoFull) {
-    throw new Error('GitHub token and repository required for artifact upload')
-  }
-
-  const [owner, repo] = repoFull.split('/')
-  const octokit = new Octokit({ auth: token })
-
-  // Create zip file from action-context directory
+  const artifact = new DefaultArtifactClient()
   const contextDir = join(workspace, 'action-context')
-  const zipPath = join(contextDir, 'artifact.zip')
 
-  // Use zip command to create archive
-  const { execFile } = await import('node:child_process')
-  const { promisify } = await import('node:util')
-  const execFileAsync = promisify(execFile)
+  try {
+    const { id: artifactId } = await artifact.uploadArtifact(artifactName, [contextDir], workspace, {
+      retentionDays,
+      compressionLevel: 6,
+    })
 
-  await execFileAsync('zip', ['-r', zipPath, '.'], { cwd: contextDir })
-
-  // Read zip file
-  const zipBuffer = await fs.readFile(zipPath)
-
-  // Upload artifact
-  const { data: artifact } = await octokit.rest.actions.createArtifact({
-    owner,
-    repo,
-    artifact_id: artifactName,
-    size: zipBuffer.length,
-  })
-
-  // Upload the file content
-  await octokit.rest.actions.uploadArtifact({
-    owner,
-    repo,
-    artifact_id: artifactName,
-    body: zipBuffer,
-  })
-
-  // Cleanup zip file
-  try { await fs.unlink(zipPath) } catch {}
-
-  console.log(`Uploaded build artifact: ${artifactName}`)
+    console.log(`Uploaded build artifact: ${artifactName} (ID: ${artifactId})`)
+  } catch (error) {
+    console.error(`Failed to upload build artifact ${artifactName}:`, getErrorMessage(error))
+    throw error
+  }
 }
 
 /**
  * Upload result artifact (CAR + metadata) using GitHub API
+ * @param {string} workspace
+ * @param {string} artifactName
+ * @param {string} carPath
+ * @param {string} metadataPath
  */
 export async function uploadResultArtifact(workspace, artifactName, carPath, metadataPath) {
-  const token = process.env.GITHUB_TOKEN || getInput('github_token')
-  const repoFull = process.env.GITHUB_REPOSITORY
+  const artifact = new DefaultArtifactClient()
+  try {
+    const { id: artifactId } = await artifact.uploadArtifact(artifactName, [carPath, metadataPath], workspace, {
+      retentionDays: 30, // Keep result artifacts longer
+      compressionLevel: 6,
+    })
 
-  if (!token || !repoFull) {
-    throw new Error('GitHub token and repository required for artifact upload')
+    console.log(`Uploaded result artifact: ${artifactName} (ID: ${artifactId})`)
+  } catch (error) {
+    console.error(`Failed to upload result artifact ${artifactName}:`, getErrorMessage(error))
+    throw error
   }
-
-  const [owner, repo] = repoFull.split('/')
-  const octokit = new Octokit({ auth: token })
-
-  // Create zip file containing CAR and metadata
-  const zipPath = join(workspace, 'result-artifact.zip')
-
-  const { execFile } = await import('node:child_process')
-  const { promisify } = await import('node:util')
-  const execFileAsync = promisify(execFile)
-
-  // Add files to zip
-  await execFileAsync('zip', ['-j', zipPath, carPath, metadataPath])
-
-  // Read zip file
-  const zipBuffer = await fs.readFile(zipPath)
-
-  // Upload artifact
-  const { data: artifact } = await octokit.rest.actions.createArtifact({
-    owner,
-    repo,
-    artifact_id: artifactName,
-    size: zipBuffer.length,
-  })
-
-  // Upload the file content
-  await octokit.rest.actions.uploadArtifact({
-    owner,
-    repo,
-    artifact_id: artifactName,
-    body: zipBuffer,
-  })
-
-  // Cleanup zip file
-  try { await fs.unlink(zipPath) } catch {}
-
-  console.log(`Uploaded result artifact: ${artifactName}`)
 }
 
 /**
  * Save cache using GitHub API
+ * @param {string} workspace
+ * @param {string} cacheKey
+ * @param {string} contextPath
  */
 export async function saveCache(workspace, cacheKey, contextPath) {
-  const token = process.env.GITHUB_TOKEN || getInput('github_token')
-  const repoFull = process.env.GITHUB_REPOSITORY
-
-  if (!token || !repoFull) {
-    console.log('Skipping cache save: no GitHub token')
-    return
-  }
-
-  const [owner, repo] = repoFull.split('/')
-  const octokit = new Octokit({ auth: token })
-
-  // Create zip file from context directory
-  const zipPath = join(contextPath, 'cache.zip')
-
-  const { execFile } = await import('node:child_process')
-  const { promisify } = await import('node:util')
-  const execFileAsync = promisify(execFile)
-
-  await execFileAsync('zip', ['-r', zipPath, '.'], { cwd: contextPath })
-
-  // Read zip file
-  const zipBuffer = await fs.readFile(zipPath)
-
-  // Upload as cache artifact
   const artifactName = `cache-${cacheKey}`
-  const { data: artifact } = await octokit.rest.actions.createArtifact({
-    owner,
-    repo,
-    artifact_id: artifactName,
-    size: zipBuffer.length,
-  })
 
-  // Upload the file content
-  await octokit.rest.actions.uploadArtifact({
-    owner,
-    repo,
-    artifact_id: artifactName,
-    body: zipBuffer,
-  })
+  const artifact = new DefaultArtifactClient()
+  try {
+    const { id: artifactId } = await artifact.uploadArtifact(artifactName, [contextPath], workspace, {
+      retentionDays: 7, // Cache artifacts have shorter retention
+      compressionLevel: 6,
+    })
 
-  // Cleanup zip file
-  try { await fs.unlink(zipPath) } catch {}
-
-  console.log(`Saved cache: ${cacheKey}`)
+    console.log(`Saved cache: ${cacheKey} (ID: ${artifactId})`)
+  } catch (error) {
+    console.error(`Failed to save cache ${cacheKey}:`, getErrorMessage(error))
+    // Don't throw - cache save failure shouldn't break the workflow
+  }
 }
 
 /**
  * Restore cache using GitHub API
+ * @param {string} _workspace
+ * @param {string} cacheKey
+ * @param {string} contextPath
+ * @param {string} buildRunId
  */
-export async function restoreCache(workspace, cacheKey, contextPath) {
-  const token = process.env.GITHUB_TOKEN || getInput('github_token')
-  const repoFull = process.env.GITHUB_REPOSITORY
-
-  if (!token || !repoFull) {
-    console.log('Skipping cache restore: no GitHub token')
-    return false
-  }
-
-  const [owner, repo] = repoFull.split('/')
-  const octokit = new Octokit({ auth: token })
-
+export async function restoreCache(_workspace, cacheKey, contextPath, buildRunId) {
   const artifactName = `cache-${cacheKey}`
 
   try {
-    // List artifacts to find cache
-    const artifacts = await octokit.paginate(octokit.rest.actions.listArtifactsForRepo, {
-      owner,
-      repo,
-      per_page: 100,
-    })
+    const artifact = new DefaultArtifactClient()
 
-    const cacheArtifact = artifacts.find(a => a.name === artifactName && !a.expired)
-
-    if (!cacheArtifact) {
-      console.log(`Cache not found: ${cacheKey}`)
+    // Get repository information
+    const repoFull = process.env.GITHUB_REPOSITORY
+    const token = process.env.GITHUB_TOKEN
+    if (!repoFull || !token || !buildRunId) {
+      console.log('Missing repository info, token, or build run ID for cache restore')
       return false
     }
 
-    // Download cache artifact
-    const download = await octokit.rest.actions.downloadArtifact({
-      owner,
-      repo,
-      artifact_id: cacheArtifact.id,
-      archive_format: 'zip',
+    const [repositoryOwner, repositoryName] = repoFull.split('/')
+    if (!repositoryOwner || !repositoryName) {
+      console.log('Invalid repository format:', repoFull)
+      return false
+    }
+
+    // First, get the artifact by name to get its ID from the build workflow run
+    const artifacts = await artifact.listArtifacts({
+      findBy: {
+        token,
+        workflowRunId: parseInt(buildRunId, 10),
+        repositoryOwner,
+        repositoryName,
+      },
     })
+    const targetArtifact = artifacts.artifacts.find((a) => a.name === artifactName)
 
-    // Extract to context directory
-    const zipPath = join(contextPath, 'cache.zip')
-    await fs.writeFile(zipPath, Buffer.from(download.data))
+    if (!targetArtifact) {
+      console.log(`Cache artifact not found: ${artifactName}`)
+      return false
+    }
 
-    const { execFile } = await import('node:child_process')
-    const { promisify } = await import('node:util')
-    const execFileAsync = promisify(execFile)
-
-    await execFileAsync('unzip', ['-o', zipPath, '-d', contextPath])
-
-    // Cleanup zip file
-    try { await fs.unlink(zipPath) } catch {}
+    const _downloadResponse = await artifact.downloadArtifact(targetArtifact.id, {
+      path: contextPath,
+    })
 
     console.log(`Restored cache: ${cacheKey}`)
     return true
   } catch (error) {
-    console.log(`Failed to restore cache ${cacheKey}:`, error?.message || error)
+    console.log(`Failed to restore cache ${cacheKey}:`, getErrorMessage(error))
     return false
+  }
+}
+
+/**
+ * Download build artifact using GitHub API
+ * @param {string} workspace
+ * @param {string} artifactName
+ * @param {string} buildRunId
+ */
+export async function downloadBuildArtifact(workspace, artifactName, buildRunId) {
+  const ctxDir = join(workspace, 'action-context')
+
+  try {
+    await mkdir(ctxDir, { recursive: true })
+
+    const artifact = new DefaultArtifactClient()
+
+    // Get repository information
+    const repoFull = process.env.GITHUB_REPOSITORY
+    const token = process.env.GITHUB_TOKEN
+    if (!repoFull || !token || !buildRunId) {
+      throw new Error('Missing repository info, token, or build run ID for artifact download')
+    }
+
+    const [repositoryOwner, repositoryName] = repoFull.split('/')
+    if (!repositoryOwner || !repositoryName) {
+      throw new Error(`Invalid repository format: ${repoFull}`)
+    }
+
+    // First, get the artifact by name to get its ID from the build workflow run
+    const artifacts = await artifact.listArtifacts({
+      findBy: {
+        token,
+        workflowRunId: parseInt(buildRunId, 10),
+        repositoryOwner,
+        repositoryName,
+      },
+    })
+    const targetArtifact = artifacts.artifacts.find((a) => a.name === artifactName)
+
+    if (!targetArtifact) {
+      throw new Error(`Artifact ${artifactName} not found`)
+    }
+
+    const _downloadResponse = await artifact.downloadArtifact(targetArtifact.id, {
+      path: ctxDir,
+    })
+
+    console.log(`Downloaded and extracted artifact ${artifactName}`)
+  } catch (error) {
+    console.error(`Failed to download artifact ${artifactName}:`, getErrorMessage(error))
+    throw error
   }
 }

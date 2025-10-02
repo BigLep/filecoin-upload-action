@@ -1,15 +1,14 @@
-import { loadContext, mergeAndSaveContext } from './context.js'
-import { getInput } from './inputs.js'
-import { handleError } from './errors.js'
-import { cleanupSynapse } from './filecoin.js'
 import { runBuild } from './build.js'
+import { mergeAndSaveContext } from './context.js'
+import { getErrorMessage, handleError } from './errors.js'
+import { cleanupSynapse } from './filecoin.js'
+import { getInput } from './inputs.js'
 import { runUpload } from './upload.js'
 
 /**
  * Run all mode: Build + upload in single workflow
  */
 async function runAll() {
-
   console.log('━━━ All Mode: Build + Upload in single workflow ━━━')
 
   // First run build logic
@@ -50,7 +49,7 @@ async function main() {
     try {
       await cleanupSynapse()
     } catch (e) {
-      console.error('Cleanup failed:', e?.message || e)
+      console.error('Cleanup failed:', getErrorMessage(e))
     }
     throw error
   }
@@ -61,7 +60,7 @@ main().catch(async (err) => {
   try {
     await cleanupSynapse()
   } catch (e) {
-    console.error('Cleanup failed:', e?.message || e)
+    console.error('Cleanup failed:', getErrorMessage(e))
   }
   process.exit(1)
 })

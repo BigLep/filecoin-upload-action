@@ -1,13 +1,21 @@
-import { readdir, access, readFile, writeFile, copyFile, mkdir, unlink, rm } from 'node:fs/promises'
-import { join, basename } from 'node:path'
 import { constants as fsConstants } from 'node:fs'
+import { access, copyFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 import pc from 'picocolors'
 import pino from 'pino'
+import { uploadBuildArtifact } from './artifacts.js'
+import { contextWithCar, mergeAndSaveContext } from './context.js'
+import { getErrorMessage } from './errors.js'
 import { createCarFile } from './filecoin.js'
-import { loadContext, mergeAndSaveContext, contextWithCar } from './context.js'
 import { getInput } from './inputs.js'
 import { writeOutputs } from './outputs.js'
-import { uploadBuildArtifact } from './artifacts.js'
+
+// Import types for JSDoc
+/**
+ * @typedef {import('./types.js').CombinedContext} CombinedContext
+ * @typedef {import('./types.js').ParsedInputs} ParsedInputs
+ * @typedef {import('./types.js').BuildResult} BuildResult
+ */
 
 /**
  * Read GitHub event payload
@@ -19,7 +27,7 @@ async function readEventPayload() {
     const content = await readFile(eventPath, 'utf8')
     return JSON.parse(content)
   } catch (error) {
-    console.warn('Failed to read event payload:', error?.message || error)
+    console.warn('Failed to read event payload:', getErrorMessage(error))
     return {}
   }
 }
@@ -49,19 +57,22 @@ async function determineArtifactName() {
 
 /**
  * Update context with PR and build metadata
+ * @param {string} workspace
+ * @param {string} artifactName
  */
 async function updateBuildMetadata(workspace, artifactName) {
   const buildRunId = process.env.GITHUB_RUN_ID || ''
   const eventName = process.env.GITHUB_EVENT_NAME || ''
   const event = await readEventPayload()
 
+  /** @type {Partial<CombinedContext>} */
   const payload = {
     artifact_name: artifactName,
     build_run_id: buildRunId,
     event_name: eventName,
   }
 
-  if (event && event.pull_request) {
+  if (event?.pull_request) {
     const pr = event.pull_request
     payload.pr = {
       number: typeof pr.number === 'number' ? pr.number : Number(pr.number) || 0,
@@ -76,6 +87,8 @@ async function updateBuildMetadata(workspace, artifactName) {
 
 /**
  * Normalize context for artifact upload (copy CAR into action-context)
+ * @param {string} workspace
+ * @param {string} carPath
  */
 async function normalizeContextForArtifact(workspace, carPath) {
   if (!carPath) {
@@ -102,7 +115,9 @@ async function normalizeContextForArtifact(workspace, carPath) {
         .filter((name) => name.toLowerCase().endsWith('.car') && name !== carName)
         .map((name) => unlink(join(contextDir, name)))
     )
-  } catch {}
+  } catch {
+    // Ignore cleanup errors
+  }
 
   await copyFile(carPath, destination)
   await mergeAndSaveContext(workspace, contextWithCar(workspace, destination))
@@ -121,12 +136,13 @@ export async function runBuild() {
 
   // Parse inputs (build mode doesn't need wallet validation)
   const { parseInputs, resolveContentPath } = await import('./inputs.js')
-  const inputs = parseInputs('compute') // Skip wallet validation for build mode
+  const inputs = /** @type {ParsedInputs} */ (parseInputs('compute')) // Skip wallet validation for build mode
   const { contentPath } = inputs
   const targetPath = resolveContentPath(contentPath)
 
   // Create CAR file
-  const { carPath, ipfsRootCid } = await createCarFile(targetPath, contentPath, logger)
+  const buildResult = /** @type {BuildResult} */ (await createCarFile(targetPath, contentPath, logger))
+  const { carPath, ipfsRootCid } = buildResult
   console.log(`IPFS Root CID: ${pc.bold(ipfsRootCid)}`)
 
   // Determine artifact name

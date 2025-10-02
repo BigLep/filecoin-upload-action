@@ -1,68 +1,27 @@
-import { readdir, access, readFile, writeFile, copyFile, mkdir, unlink, rm, appendFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { execFile } from 'node:child_process'
+import { access, copyFile, mkdir, readdir, readFile, rm, unlink } from 'node:fs/promises'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { Octokit } from '@octokit/rest'
 import pc from 'picocolors'
 import pino from 'pino'
-import { Octokit } from '@octokit/rest'
-import { loadContext, mergeAndSaveContext, contextWithCar } from './context.js'
-import { cleanupSynapse, handlePayments, initializeSynapse, uploadCarToFilecoin } from './filecoin.js'
+import { downloadBuildArtifact, restoreCache, saveCache, uploadResultArtifact } from './artifacts.js'
 import { createArtifacts } from './cache.js'
+import { commentOnPR } from './comment-pr.js'
+import { contextWithCar, loadContext, mergeAndSaveContext } from './context.js'
+import { getErrorMessage } from './errors.js'
+import { cleanupSynapse, handlePayments, initializeSynapse, uploadCarToFilecoin } from './filecoin.js'
 import { getInput, parseInputs, resolveContentPath } from './inputs.js'
 import { writeOutputs, writeSummary } from './outputs.js'
-import { commentOnPR } from './comment-pr.js'
-import { saveCache, restoreCache, uploadResultArtifact } from './artifacts.js'
 
-const pExecFile = promisify(execFile)
-
+// Import types for JSDoc
 /**
- * Download build artifact using GitHub API
+ * @typedef {import('./types.js').CombinedContext} CombinedContext
+ * @typedef {import('./types.js').ParsedInputs} ParsedInputs
+ * @typedef {import('./types.js').UploadResult} UploadResult
  */
-async function downloadBuildArtifact(workspace, artifactName, buildRunId) {
-  const token = process.env.GITHUB_TOKEN || getInput('github_token')
-  const repoFull = process.env.GITHUB_REPOSITORY
 
-  if (!token || !repoFull) {
-    throw new Error('GitHub token and repository required for artifact download')
-  }
-
-  const [owner, repo] = repoFull.split('/')
-  const octokit = new Octokit({ auth: token })
-
-  // List artifacts for the specific run
-  const { data: artifacts } = await octokit.rest.actions.listWorkflowRunArtifacts({
-    owner,
-    repo,
-    run_id: buildRunId,
-  })
-
-  const artifact = artifacts.artifacts.find(a => a.name === artifactName && !a.expired)
-  if (!artifact) {
-    throw new Error(`Artifact ${artifactName} not found for run ${buildRunId}`)
-  }
-
-  // Download the artifact
-  const download = await octokit.rest.actions.downloadArtifact({
-    owner,
-    repo,
-    artifact_id: artifact.id,
-    archive_format: 'zip',
-  })
-
-  // Extract to action-context directory
-  const ctxDir = join(workspace, 'action-context')
-  const zipPath = join(ctxDir, 'artifact.zip')
-  const destDir = ctxDir
-
-  await mkdir(ctxDir, { recursive: true })
-  await writeFile(zipPath, Buffer.from(download.data))
-  await pExecFile('unzip', ['-o', zipPath, '-d', destDir])
-
-  // Cleanup zip file
-  try { await unlink(zipPath) } catch {}
-
-  console.log(`Downloaded and extracted artifact ${artifactName}`)
-}
+const _pExecFile = promisify(execFile)
 
 /**
  * Read GitHub event payload
@@ -74,7 +33,7 @@ async function readEventPayload() {
     const content = await readFile(eventPath, 'utf8')
     return JSON.parse(content)
   } catch (error) {
-    console.warn('Failed to read event payload:', error?.message || error)
+    console.warn('Failed to read event payload:', getErrorMessage(error))
     return {}
   }
 }
@@ -110,8 +69,11 @@ async function determineArtifactName() {
 
 /**
  * Try to reuse previous upload by checking artifacts or cache
+ * @param {string} workspace
+ * @param {string} rootCid
+ * @param {string} buildRunId
  */
-async function prepareReuse(workspace, rootCid) {
+async function prepareReuse(workspace, rootCid, buildRunId) {
   if (!rootCid) {
     return { found: false, source: null }
   }
@@ -129,11 +91,17 @@ async function prepareReuse(workspace, rootCid) {
       console.log('Found reusable data in existing context')
       return { found: true, source: 'context' }
     }
-  } catch {}
+  } catch {
+    // Ignore if context file doesn't exist
+  }
 
   // Try to download prior artifact by CID
   if (token && repoFull) {
     const [owner, repo] = repoFull.split('/')
+    if (!owner || !repo) {
+      console.warn('Invalid repository format:', repoFull)
+      return { found: false, source: null }
+    }
     const octokit = new Octokit({ auth: token })
     const targetName = `filecoin-pin-${rootCid}`
 
@@ -148,25 +116,16 @@ async function prepareReuse(workspace, rootCid) {
 
       if (found) {
         console.log(`Found reusable artifact: ${targetName}`)
-        const zipPath = join(ctxDir, 'artifact.zip')
         const destDir = join(ctxDir, 'artifact.tmp')
-
-        const download = await octokit.rest.actions.downloadArtifact({
-          owner,
-          repo,
-          artifact_id: found.id,
-          archive_format: 'zip',
-        })
-
-        const buffer = Buffer.from(download.data)
-        await mkdir(ctxDir, { recursive: true })
-        await writeFile(zipPath, buffer)
         await mkdir(destDir, { recursive: true })
-        await pExecFile('unzip', ['-o', zipPath, '-d', destDir])
+
+        // Use the artifacts.js helper to download the artifact
+        await downloadBuildArtifact(workspace, targetName, buildRunId)
 
         // Merge artifact metadata into context
         const files = await readdir(destDir)
-        const metaName = files.find((f) => f.toLowerCase() === 'upload.json') || files.find((f) => f.toLowerCase() === 'context.json')
+        const metaName =
+          files.find((f) => f.toLowerCase() === 'upload.json') || files.find((f) => f.toLowerCase() === 'context.json')
         if (metaName) {
           const srcMeta = join(destDir, metaName)
           const text = await readFile(srcMeta, 'utf8')
@@ -178,7 +137,7 @@ async function prepareReuse(workspace, rootCid) {
             data_set_id: meta.dataSetId,
             provider: meta.provider,
             network: meta.network,
-            previewURL: meta.previewURL,
+            preview_url: meta.previewURL,
             metadata_path: join(ctxDir, 'context.json'),
             upload_status: 'reused-artifact',
           })
@@ -197,19 +156,24 @@ async function prepareReuse(workspace, rootCid) {
                 .filter((name) => name.toLowerCase().endsWith('.car') && name !== carName)
                 .map((name) => unlink(join(ctxDir, name)))
             )
-          } catch {}
+          } catch {
+            // Ignore cleanup errors
+          }
           await copyFile(srcCar, destCar)
           await mergeAndSaveContext(workspace, contextWithCar(workspace, destCar))
         }
 
         // Cleanup temp files
-        try { await unlink(zipPath) } catch {}
-        try { await rm(destDir, { recursive: true, force: true }) } catch {}
+        try {
+          await rm(destDir, { recursive: true, force: true })
+        } catch {
+          // Ignore cleanup errors
+        }
 
         return { found: true, source: 'artifact' }
       }
     } catch (error) {
-      console.warn('Failed to check for reusable artifacts:', error?.message || error)
+      console.warn('Failed to check for reusable artifacts:', getErrorMessage(error))
     }
   }
 
@@ -226,6 +190,7 @@ export async function runUpload() {
   console.log('━━━ Upload Mode: Uploading to Filecoin ━━━')
 
   // Parse inputs (upload mode needs wallet)
+  /** @type {ParsedInputs} */
   const inputs = parseInputs('upload')
   const { walletPrivateKey, contentPath, minDays, minBalance, maxTopUp, withCDN, providerAddress } = inputs
   const targetPath = resolveContentPath(contentPath)
@@ -234,12 +199,13 @@ export async function runUpload() {
   const artifactName = await determineArtifactName()
   console.log(`Looking for artifact: ${artifactName}`)
 
-  const buildRunId = getInput('build_run_id') || process.env.GITHUB_EVENT_WORKFLOW_RUN_ID
+  const buildRunId = getInput('build_run_id') || process.env.GITHUB_EVENT_WORKFLOW_RUN_ID || ''
 
   // Download the build artifact
   await downloadBuildArtifact(workspace, artifactName, buildRunId)
 
   // Context should now be loaded from downloaded artifact
+  /** @type {Partial<CombinedContext>} */
   let ctx = await loadContext(workspace)
 
   if (!ctx.ipfs_root_cid) {
@@ -252,15 +218,16 @@ export async function runUpload() {
   // Try to restore cache first
   const ctxDir = join(workspace, 'action-context')
   const cacheKey = `filecoin-v1-${rootCid}`
-  const cacheRestored = await restoreCache(workspace, cacheKey, ctxDir)
+  const cacheRestored = await restoreCache(workspace, cacheKey, ctxDir, buildRunId)
 
   // If cache restored, reload context
   if (cacheRestored) {
+    /** @type {Partial<CombinedContext>} */
     ctx = await loadContext(workspace)
   }
 
   // Try to reuse previous upload
-  const reuse = await prepareReuse(workspace, rootCid)
+  const reuse = await prepareReuse(workspace, rootCid, buildRunId)
 
   if (reuse.found) {
     // Reload context after reuse preparation
@@ -292,28 +259,28 @@ export async function runUpload() {
 
     // Ensure balances are correct even when reusing
     try {
-      const synapse = await initializeSynapse(walletPrivateKey, logger)
-      await handlePayments(synapse, { minDays, minBalance, maxTopUp }, logger)
-      await cleanupSynapse()
+      if (walletPrivateKey) {
+        const synapse = await initializeSynapse(walletPrivateKey, logger)
+        await handlePayments(synapse, { minDays, minBalance, ...(maxTopUp !== undefined && { maxTopUp }) }, logger)
+      }
     } catch (error) {
-      console.warn('Balance validation failed:', error?.message || error)
+      console.warn('Balance validation failed:', getErrorMessage(error))
+    } finally {
+      await cleanupSynapse()
     }
 
-    await writeSummary({
-      ...ctx,
-      car_path: resolvedCarPath || ctx.car_path || '',
-      metadata_path: metadataPath,
-    }, uploadStatus === 'reused-artifact' ? 'Reused artifact' : 'Reused cache')
+    await writeSummary(ctx, uploadStatus === 'reused-artifact' ? 'Reused artifact' : 'Reused cache')
 
     // Comment on PR
+    const prNumber = ctx.pr?.number
     await commentOnPR({
-      ipfsRootCid: ctx.ipfs_root_cid,
-      dataSetId: ctx.data_set_id,
-      pieceCid: ctx.piece_cid,
+      ipfsRootCid: ctx.ipfs_root_cid || '',
+      dataSetId: ctx.data_set_id || '',
+      pieceCid: ctx.piece_cid || '',
       uploadStatus,
-      prNumber: ctx.pr?.number,
-      githubToken: process.env.GITHUB_TOKEN || getInput('github_token'),
-      githubRepository: process.env.GITHUB_REPOSITORY
+      ...(prNumber !== undefined && { prNumber }),
+      githubToken: process.env.GITHUB_TOKEN || getInput('github_token') || '',
+      githubRepository: process.env.GITHUB_REPOSITORY || '',
     })
 
     console.log(`✓ ${uploadStatus === 'reused-artifact' ? 'Reused previous artifact' : 'Reused cached upload'}`)
@@ -325,7 +292,12 @@ export async function runUpload() {
 
   // Find CAR file in context
   let carPath = ctx.car_path
-  if (!carPath || !(await access(carPath).then(() => true).catch(() => false))) {
+  if (
+    !carPath ||
+    !(await access(carPath)
+      .then(() => true)
+      .catch(() => false))
+  ) {
     const ctxDir = join(workspace, 'action-context')
     const files = await readdir(ctxDir)
     const carFile = files.find((f) => f.toLowerCase().endsWith('.car'))
@@ -336,10 +308,15 @@ export async function runUpload() {
   }
 
   // Initialize Synapse and upload
+  if (!walletPrivateKey) {
+    throw new Error('walletPrivateKey is required for upload mode')
+  }
   const synapse = await initializeSynapse(walletPrivateKey, logger)
-  await handlePayments(synapse, { minDays, minBalance, maxTopUp }, logger)
+  await handlePayments(synapse, { minDays, minBalance, ...(maxTopUp !== undefined && { maxTopUp }) }, logger)
 
-  const uploadResult = await uploadCarToFilecoin(synapse, carPath, rootCid, { withCDN, providerAddress }, logger)
+  const uploadResult = /** @type {UploadResult} */ (
+    await uploadCarToFilecoin(synapse, carPath, rootCid, { withCDN, providerAddress }, logger)
+  )
   const { pieceCid, pieceId, dataSetId, provider, previewURL, network } = uploadResult
 
   // Create metadata
@@ -358,11 +335,10 @@ export async function runUpload() {
 
   // Update context
   await mergeAndSaveContext(workspace, {
-    network,
     piece_cid: pieceCid,
     data_set_id: dataSetId,
     provider,
-    previewURL,
+    preview_url: previewURL,
     upload_status: 'uploaded',
     metadata_path: metadataPath,
     car_path: artifactCarPath,
@@ -380,8 +356,8 @@ export async function runUpload() {
     ipfs_root_cid: rootCid,
     data_set_id: dataSetId,
     piece_cid: pieceCid,
-    provider_id: provider.id,
-    provider_name: provider.name,
+    provider_id: provider.id || '',
+    provider_name: provider.name || '',
     car_path: artifactCarPath,
     metadata_path: metadataPath,
     upload_status: 'uploaded',
@@ -394,21 +370,23 @@ export async function runUpload() {
   console.log(`IPFS Root CID: ${pc.bold(rootCid)}`)
   console.log(`Data Set ID: ${dataSetId}`)
   console.log(`Piece CID: ${pieceCid}`)
-  console.log(`Provider: ${provider.name} (ID ${provider.id})`)
+  console.log(`Provider: ${provider.name || 'Unknown'} (ID ${provider.id || 'Unknown'})`)
   console.log(`Preview: ${previewURL}`)
 
+  /** @type {Partial<CombinedContext>} */
   ctx = await loadContext(workspace)
   await writeSummary(ctx, 'Uploaded')
 
   // Comment on PR
+  const prNumber = ctx.pr?.number
   await commentOnPR({
     ipfsRootCid: rootCid,
     dataSetId,
     pieceCid,
     uploadStatus: 'uploaded',
-    prNumber: ctx.pr?.number,
-    githubToken: process.env.GITHUB_TOKEN || getInput('github_token'),
-    githubRepository: process.env.GITHUB_REPOSITORY
+    ...(prNumber !== undefined && { prNumber }),
+    githubToken: process.env.GITHUB_TOKEN || getInput('github_token') || '',
+    githubRepository: process.env.GITHUB_REPOSITORY || '',
   })
 
   await cleanupSynapse()

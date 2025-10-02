@@ -14,19 +14,39 @@
 
 import { Octokit } from '@octokit/rest'
 import { loadContext } from './context.js'
+import { getErrorMessage } from './errors.js'
 
-export async function commentOnPR({ ipfsRootCid, dataSetId, pieceCid, uploadStatus, prNumber, githubToken, githubRepository }) {
+// Import types for JSDoc
+/**
+ * @typedef {import('./types.js').CommentPRParams} CommentPRParams
+ */
+
+/**
+ * Comment on PR with Filecoin upload results
+ * @param {CommentPRParams} params
+ */
+export async function commentOnPR({
+  ipfsRootCid,
+  dataSetId,
+  pieceCid,
+  uploadStatus,
+  prNumber,
+  githubToken,
+  githubRepository,
+}) {
   // Try to get PR number from parameter or context
+  /** @type {number | undefined} */
   let resolvedPrNumber = prNumber
   if (!resolvedPrNumber) {
     const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
     const ctx = await loadContext(workspace)
-    resolvedPrNumber = ctx.pr?.number ? String(ctx.pr.number) : null
+    resolvedPrNumber = ctx.pr?.number || undefined
   }
 
   // Also try from GitHub event
   if (!resolvedPrNumber && process.env.GITHUB_EVENT_NAME === 'pull_request') {
-    resolvedPrNumber = process.env.GITHUB_EVENT_PULL_REQUEST_NUMBER
+    const envPrNumber = process.env.GITHUB_EVENT_PULL_REQUEST_NUMBER
+    resolvedPrNumber = envPrNumber ? parseInt(envPrNumber, 10) : undefined
   }
 
   if (!ipfsRootCid || !dataSetId || !pieceCid || !resolvedPrNumber || !githubToken || !githubRepository) {
@@ -35,11 +55,16 @@ export async function commentOnPR({ ipfsRootCid, dataSetId, pieceCid, uploadStat
   }
 
   const [owner, repo] = githubRepository.split('/')
-  const issue_number = parseInt(resolvedPrNumber, 10)
+  const issue_number = resolvedPrNumber
+
+  if (!owner || !repo) {
+    console.error('Invalid repository format:', githubRepository)
+    return
+  }
 
   const octokit = new Octokit({ auth: githubToken })
 
-  const preview = 'https://ipfs.io/ipfs/' + ipfsRootCid
+  const preview = `https://ipfs.io/ipfs/${ipfsRootCid}`
   let statusLine = '- Status: '
   if (uploadStatus === 'uploaded') statusLine += 'Uploaded new content'
   else if (uploadStatus === 'reused-cache') statusLine += 'Reused cached content'
@@ -50,14 +75,14 @@ export async function commentOnPR({ ipfsRootCid, dataSetId, pieceCid, uploadStat
     '<!-- filecoin-pin-upload-action -->',
     'Filecoin Pin Upload ✅',
     '',
-    '- IPFS Root CID: `' + ipfsRootCid + '`',
-    '- Data Set ID: `' + dataSetId + '`',
-    '- Piece CID: `' + pieceCid + '`',
+    `- IPFS Root CID: \`${ipfsRootCid}\``,
+    `- Data Set ID: \`${dataSetId}\``,
+    `- Piece CID: \`${pieceCid}\``,
     '',
     statusLine,
     '',
     '- Preview (temporary centralized gateway):',
-    '  - ' + preview,
+    `  - ${preview}`,
   ].join('\n')
 
   try {
@@ -66,10 +91,12 @@ export async function commentOnPR({ ipfsRootCid, dataSetId, pieceCid, uploadStat
       owner,
       repo,
       issue_number,
-      per_page: 100
+      per_page: 100,
     })
 
-    const existing = comments.find(c => c.user?.type === 'Bot' && (c.body || '').includes('filecoin-pin-upload-action'))
+    const existing = comments.find(
+      (c) => c.user?.type === 'Bot' && (c.body || '').includes('filecoin-pin-upload-action')
+    )
 
     if (existing) {
       console.log(`Updating existing comment ${existing.id} on PR #${issue_number}`)
@@ -77,7 +104,7 @@ export async function commentOnPR({ ipfsRootCid, dataSetId, pieceCid, uploadStat
         owner,
         repo,
         comment_id: existing.id,
-        body
+        body,
       })
     } else {
       console.log(`Creating new comment on PR #${issue_number}`)
@@ -85,13 +112,13 @@ export async function commentOnPR({ ipfsRootCid, dataSetId, pieceCid, uploadStat
         owner,
         repo,
         issue_number,
-        body
+        body,
       })
     }
 
     console.log('PR comment posted successfully')
   } catch (error) {
-    console.error('Failed to comment on PR:', error?.message || error)
+    console.error('Failed to comment on PR:', getErrorMessage(error))
     process.exit(1)
   }
 }

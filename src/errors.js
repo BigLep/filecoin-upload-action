@@ -2,6 +2,11 @@
  * Custom error class for Filecoin Pin operations
  */
 export class FilecoinPinError extends Error {
+  /**
+   * @param {string} message
+   * @param {string} code
+   * @param {Object} [details={}]
+   */
   constructor(message, code, details = {}) {
     super(message)
     this.name = 'FilecoinPinError'
@@ -25,20 +30,35 @@ export const ERROR_CODES = {
 }
 
 /**
+ * Get error message safely
+ * @param {unknown} error - The error to get message from
+ * @returns {string} Error message
+ */
+export function getErrorMessage(error) {
+  if (error !== null && typeof error === 'object' && 'message' in error) {
+    return /** @type {{message: string}} */ (error).message
+  }
+  return String(error)
+}
+
+/**
  * Handle and format errors for user display
- * @param {Error} error - The error to handle
+ * @param {Error | FilecoinPinError} error - The error to handle
  * @param {Object} context - Additional context for error handling
  */
 export function handleError(error, context = {}) {
-  console.error('Upload failed:', error?.message || error)
+  console.error('Upload failed:', getErrorMessage(error))
 
   // Add context-specific error handling
-  if (error.code === ERROR_CODES.INSUFFICIENT_FUNDS) {
-    console.error('💡 Tip: Check your wallet balance and ensure you have enough USDFC tokens.')
-  } else if (error.code === ERROR_CODES.PROVIDER_UNAVAILABLE) {
-    console.error('💡 Tip: Try again later or specify a different provider address.')
-  } else if (error.code === ERROR_CODES.INVALID_PRIVATE_KEY) {
-    console.error('💡 Tip: Ensure your private key is valid.')
+  // Check if error has a code property (FilecoinPinError)
+  if ('code' in error) {
+    if (error.code === ERROR_CODES.INSUFFICIENT_FUNDS) {
+      console.error('💡 Tip: Check your wallet balance and ensure you have enough USDFC tokens.')
+    } else if (error.code === ERROR_CODES.PROVIDER_UNAVAILABLE) {
+      console.error('💡 Tip: Try again later or specify a different provider address.')
+    } else if (error.code === ERROR_CODES.INVALID_PRIVATE_KEY) {
+      console.error('💡 Tip: Ensure your private key is valid.')
+    }
   }
 
   // Log context if available
