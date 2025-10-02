@@ -32,7 +32,7 @@ export interface CombinedContext {
   content_path?: string
   wallet_private_key?: string
   min_days?: number
-  min_balance?: bigint
+  max_balance?: bigint
   max_top_up?: bigint
   with_cdn?: boolean
   provider_address?: string
@@ -43,7 +43,7 @@ export interface ParsedInputs {
   walletPrivateKey?: string
   contentPath: string
   minDays: number
-  minBalance: bigint
+  maxBalance?: bigint | undefined
   maxTopUp?: bigint
   withCDN: boolean
   token: string
@@ -87,8 +87,8 @@ export interface CommentPRParams {
 
 export interface PaymentConfig {
   minDays: number
-  minBalance: bigint
-  maxTopUp?: bigint
+  maxBalance?: bigint | undefined
+  maxTopUp?: bigint | undefined
 }
 
 export interface UploadConfig {

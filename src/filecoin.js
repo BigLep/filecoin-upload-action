@@ -48,12 +48,12 @@ export async function initializeSynapse(walletPrivateKey, logger) {
 /**
  * Handle payment setup and top-ups
  * @param {any} synapse - Synapse service
- * @param {{ minDays: number, minBalance: bigint, maxTopUp?: bigint }} options - Payment options
+ * @param {{ minDays: number, maxBalance?: bigint | undefined, maxTopUp?: bigint }} options - Payment options
  * @param {any} logger - Logger instance
  * @returns {Promise<any>} Updated payment status
  */
 export async function handlePayments(synapse, options, logger) {
-  const { minDays, minBalance, maxTopUp } = options
+  const { minDays, maxBalance, maxTopUp } = options
 
   // Ensure WarmStorage allowances are at max
   await checkAndSetAllowances(synapse)
@@ -68,10 +68,36 @@ export async function handlePayments(synapse, options, logger) {
     if (topUp > requiredTopUp) requiredTopUp = topUp
   }
 
-  // Ensure minimum deposit balance if specified
-  if (minBalance > 0n && status.depositedAmount < minBalance) {
-    const delta = minBalance - status.depositedAmount
-    if (delta > requiredTopUp) requiredTopUp = delta
+  // Check if deposit would exceed maximum balance if specified
+  if (maxBalance != null && maxBalance > 0n) {
+    // Check if current balance already equals or exceeds maxBalance
+    if (status.depositedAmount >= maxBalance) {
+      logger.warn(
+        `⚠️  Current balance (${ethers.formatUnits(status.depositedAmount, 18)} USDFC) already equals or exceeds maxBalance (${ethers.formatUnits(maxBalance, 18)} USDFC). No additional deposits will be made.`
+      )
+      requiredTopUp = 0n // Don't deposit anything
+    } else {
+      // Check if required top-up would exceed maxBalance
+      const projectedBalance = status.depositedAmount + requiredTopUp
+      if (projectedBalance > maxBalance) {
+        // Calculate the maximum allowed top-up that won't exceed maxBalance
+        const maxAllowedTopUp = maxBalance - status.depositedAmount
+
+        if (maxAllowedTopUp <= 0n) {
+          // This shouldn't happen due to the check above, but just in case
+          logger.warn(
+            `⚠️  Cannot deposit any amount without exceeding maxBalance (${ethers.formatUnits(maxBalance, 18)} USDFC). No additional deposits will be made.`
+          )
+          requiredTopUp = 0n
+        } else {
+          // Reduce the top-up to fit within maxBalance
+          logger.warn(
+            `⚠️  Required top-up (${ethers.formatUnits(requiredTopUp, 18)} USDFC) would exceed maxBalance (${ethers.formatUnits(maxBalance, 18)} USDFC). Reducing to ${ethers.formatUnits(maxAllowedTopUp, 18)} USDFC.`
+          )
+          requiredTopUp = maxAllowedTopUp
+        }
+      }
+    }
   }
 
   if (requiredTopUp > 0n) {
