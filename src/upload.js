@@ -234,8 +234,23 @@ export async function runUpload() {
   await downloadBuildArtifact(workspace, artifactName, buildRunId)
 
   // Context should now be loaded from downloaded artifact
+  const ctxDir = join(workspace, 'action-context')
+  try {
+    const entries = await readdir(ctxDir)
+    console.log('[artifact-debug] action-context directory entries:', entries)
+  } catch (error) {
+    console.warn('[artifact-debug] Failed to read action-context directory:', getErrorMessage(error))
+  }
+  try {
+    const rawContext = await readFile(join(ctxDir, 'context.json'), 'utf8')
+    console.log(`[artifact-debug] action-context/context.json raw contents: ${rawContext}`)
+  } catch (error) {
+    console.warn('[artifact-debug] Unable to read action-context/context.json:', getErrorMessage(error))
+  }
+
   /** @type {Partial<CombinedContext>} */
   let ctx = await loadContext(workspace)
+  console.log('[artifact-debug] Loaded context after download:', ctx)
 
   if (!ctx.ipfs_root_cid) {
     throw new Error('No IPFS Root CID found in context. Build artifact may be missing.')
@@ -245,7 +260,6 @@ export async function runUpload() {
   console.log(`Root CID from context: ${rootCid}`)
 
   // Try to restore cache first
-  const ctxDir = join(workspace, 'action-context')
   const cacheKey = `filecoin-v1-${rootCid}`
   const cacheRestored = await restoreCache(workspace, cacheKey, buildRunId)
 
@@ -253,6 +267,7 @@ export async function runUpload() {
   if (cacheRestored) {
     /** @type {Partial<CombinedContext>} */
     ctx = await loadContext(workspace)
+    console.log('[artifact-debug] Loaded context after cache restore:', ctx)
   }
 
   // Try to reuse previous upload

@@ -1,4 +1,4 @@
-import { access, mkdir, rename, rm } from 'node:fs/promises'
+import { access, mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DefaultArtifactClient } from '@actions/artifact'
 import { getErrorMessage } from './errors.js'
@@ -175,6 +175,14 @@ export async function restoreCache(workspace, cacheKey, buildRunId) {
 
     await rm(ctxDir, { recursive: true, force: true })
     await rename(extractedCtxDir, ctxDir)
+
+    const ctxPath = join(ctxDir, 'context.json')
+    try {
+      const ctxContents = await readFile(ctxPath, 'utf8')
+      console.log(`[artifact-debug] context.json from build artifact: ${ctxContents}`)
+    } catch (error) {
+      console.warn('[artifact-debug] No context.json found after build artifact download:', getErrorMessage(error))
+    }
     await rm(tempDir, { recursive: true, force: true })
 
     console.log(`Restored cache: ${cacheKey}`)
@@ -249,6 +257,14 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
 
     await rm(ctxDir, { recursive: true, force: true })
     await rename(extractedCtxDir, ctxDir)
+
+    const ctxPath = join(ctxDir, 'context.json')
+    try {
+      const ctxContents = await readFile(ctxPath, 'utf8')
+      console.log(`[artifact-debug] context.json from cache artifact: ${ctxContents}`)
+    } catch (error) {
+      console.warn('[artifact-debug] No context.json found after cache restore:', getErrorMessage(error))
+    }
     await rm(tempDir, { recursive: true, force: true })
 
     console.log(`Downloaded and extracted artifact ${artifactName}`)
