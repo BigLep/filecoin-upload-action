@@ -1,10 +1,16 @@
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
+import { getErrorMessage } from './errors.js'
+
+// Import types for JSDoc
+/**
+ * @typedef {import('./types.js').CombinedContext} CombinedContext
+ */
 
 /**
  * Read cached metadata from cache directory
  * @param {string} cacheDir - Cache directory path
- * @returns {Object} Cached metadata
+ * @returns {Promise<CombinedContext>} Cached metadata
  */
 export async function readCachedMetadata(cacheDir) {
   const metaPath = join(cacheDir, 'context.json')
@@ -41,10 +47,14 @@ export async function mirrorToStandardCache(workspace, ipfsRootCid, metadataText
     const ctxDir = join(workspace, 'action-context')
     await fs.mkdir(ctxDir, { recursive: true })
     const ctxPath = join(ctxDir, 'context.json')
+    /** @type {CombinedContext} */
     let existing = {}
     try {
       existing = JSON.parse(await fs.readFile(ctxPath, 'utf8'))
-    } catch {}
+    } catch {
+      // Ignore if file doesn't exist
+    }
+    /** @type {any} */
     const meta = JSON.parse(metadataText)
     // Map common fields
     const mapped = {
@@ -57,7 +67,7 @@ export async function mirrorToStandardCache(workspace, ipfsRootCid, metadataText
     const merged = { ...existing, ...mapped }
     await fs.writeFile(ctxPath, JSON.stringify(merged, null, 2))
   } catch (error) {
-    console.warn('Failed to mirror metadata into action-context/context.json:', error?.message || error)
+    console.warn('Failed to mirror metadata into action-context/context.json:', getErrorMessage(error))
   }
 }
 
@@ -66,7 +76,7 @@ export async function mirrorToStandardCache(workspace, ipfsRootCid, metadataText
  * @param {string} workspace - Workspace directory
  * @param {string} carPath - Source CAR file path
  * @param {Object} metadata - Metadata to write
- * @returns {Object} Artifact paths
+ * @returns {Promise<{artifactDir: string, artifactCarPath: string, metadataPath: string}>} Artifact paths
  */
 export async function createArtifacts(workspace, carPath, metadata) {
   const artifactDir = join(workspace, 'filecoin-pin-artifacts')
@@ -74,7 +84,7 @@ export async function createArtifacts(workspace, carPath, metadata) {
   try {
     await fs.mkdir(artifactDir, { recursive: true })
   } catch (error) {
-    console.error('Failed to create artifact directory:', error?.message || error)
+    console.error('Failed to create artifact directory:', getErrorMessage(error))
     throw error
   }
 

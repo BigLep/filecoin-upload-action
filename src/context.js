@@ -1,28 +1,9 @@
 import { promises as fs } from 'node:fs'
-import { join, basename } from 'node:path'
+import { basename, join } from 'node:path'
 
+// Import types for JSDoc
 /**
- * @typedef {Object} CombinedContext
- * @property {string} [ipfs_root_cid]
- * @property {string} [car_path]
- * @property {string} [car_filename]
- * @property {string} [artifact_name]
- * @property {string} [build_run_id]
- * @property {string} [event_name]
- * @property {Object} [pr]
- * @property {number} [pr.number]
- * @property {string} [pr.sha]
- * @property {string} [pr.title]
- * @property {string} [pr.author]
- * @property {string} [piece_cid]
- * @property {string} [data_set_id]
- * @property {{ id?: string, name?: string }} [provider]
- * @property {string} [upload_status]
- * @property {string} [metadata_path]
- * @property {string} [run_id]
- * @property {string} [repository]
- * @property {string} [mode]
- * @property {string} [phase]
+ * @typedef {import('./types.js').CombinedContext} CombinedContext
  */
 
 const CONTEXT_DIRNAME = 'action-context'
@@ -42,19 +23,21 @@ function getPaths(workspace) {
  * Load the combined context from action-context/context.json.
  * Returns an empty object if file does not exist.
  * @param {string} workspace
- * @returns {Promise<CombinedContext>}
+ * @returns {Promise<Partial<CombinedContext>>}
  */
 export async function loadContext(workspace) {
   const { dir, path } = getPaths(workspace)
   try {
     await fs.mkdir(dir, { recursive: true })
-  } catch {}
+  } catch {
+    // Ignore if directory already exists
+  }
   try {
     const text = await fs.readFile(path, 'utf8')
     const parsed = JSON.parse(text)
-    return parsed && typeof parsed === 'object' ? parsed : /** @type {CombinedContext} */ ({})
+    return parsed && typeof parsed === 'object' ? parsed : /** @type {Partial<CombinedContext>} */ ({})
   } catch {
-    return /** @type {CombinedContext} */ ({})
+    return /** @type {Partial<CombinedContext>} */ ({})
   }
 }
 
@@ -84,16 +67,14 @@ export async function mergeAndSaveContext(workspace, partial) {
 
 /**
  * Produce context fields for a given CAR path.
- * @param {string} workspace
+ * @param {string} _workspace
  * @param {string} carPath
  * @returns {Partial<CombinedContext>}
  */
-export function contextWithCar(workspace, carPath) {
+export function contextWithCar(_workspace, carPath) {
   if (!carPath) return {}
   return {
     car_path: carPath,
     car_filename: basename(carPath),
   }
 }
-
-

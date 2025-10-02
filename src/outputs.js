@@ -1,4 +1,10 @@
 import { promises as fs } from 'node:fs'
+import { getErrorMessage } from './errors.js'
+
+// Import types for JSDoc
+/**
+ * @typedef {import('./types.js').CombinedContext} CombinedContext
+ */
 
 /**
  * Write output to GitHub Actions output file
@@ -23,7 +29,7 @@ export async function writeOutputs(outputs) {
 
 /**
  * Write summary to GitHub Actions step summary
- * @param {Object} context - Combined context data
+ * @param {CombinedContext} context - Combined context data
  * @param {string} status - Upload status
  */
 export async function writeSummary(context, status) {
@@ -32,13 +38,13 @@ export async function writeSummary(context, status) {
     if (!summaryFile) return
 
     const network = context?.network || ''
-    const ipfsRootCid = context?.ipfs_root_cid || context?.ipfsRootCid || ''
-    const dataSetId = context?.data_set_id || context?.dataSetId || ''
-    const pieceCid = context?.piece_cid || context?.pieceCid || ''
+    const ipfsRootCid = context?.ipfs_root_cid || ''
+    const dataSetId = context?.data_set_id || ''
+    const pieceCid = context?.piece_cid || ''
     const provider = context?.provider || {}
-    const previewURL = context?.previewURL || context?.preview || ''
-    const carPath = context?.car_path || context?.carPath || ''
-    const metadataPath = context?.metadata_path || context?.metadataPath || ''
+    const previewURL = context?.preview_url || ''
+    const carPath = context?.car_path || ''
+    const metadataPath = context?.metadata_path || ''
 
     const md = [
       '## Filecoin Pin Upload',
@@ -59,6 +65,6 @@ export async function writeSummary(context, status) {
 
     await fs.appendFile(summaryFile, `\n${md}\n`)
   } catch (error) {
-    console.error('Failed to write summary:', error?.message || error)
+    console.error('Failed to write summary:', getErrorMessage(error))
   }
 }

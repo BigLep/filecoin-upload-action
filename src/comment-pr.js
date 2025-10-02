@@ -13,39 +13,76 @@
  */
 
 import { Octokit } from '@octokit/rest'
+import { loadContext } from './context.js'
+import { getErrorMessage } from './errors.js'
 
-async function commentOnPR() {
-  const { IPFS_ROOT_CID, DATA_SET_ID, PIECE_CID, UPLOAD_STATUS, PR_NUMBER, GITHUB_TOKEN, GITHUB_REPOSITORY } = process.env
+// Import types for JSDoc
+/**
+ * @typedef {import('./types.js').CommentPRParams} CommentPRParams
+ */
 
-  if (!IPFS_ROOT_CID || !DATA_SET_ID || !PIECE_CID || !PR_NUMBER || !GITHUB_TOKEN || !GITHUB_REPOSITORY) {
-    console.error('Missing required environment variables')
-    process.exit(1)
+/**
+ * Comment on PR with Filecoin upload results
+ * @param {CommentPRParams} params
+ */
+export async function commentOnPR({
+  ipfsRootCid,
+  dataSetId,
+  pieceCid,
+  uploadStatus,
+  prNumber,
+  githubToken,
+  githubRepository,
+}) {
+  // Try to get PR number from parameter or context
+  /** @type {number | undefined} */
+  let resolvedPrNumber = prNumber
+  if (!resolvedPrNumber) {
+    const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
+    const ctx = await loadContext(workspace)
+    resolvedPrNumber = ctx.pr?.number || undefined
   }
 
-  const [owner, repo] = GITHUB_REPOSITORY.split('/')
-  const issue_number = parseInt(PR_NUMBER, 10)
+  // Also try from GitHub event
+  if (!resolvedPrNumber && process.env.GITHUB_EVENT_NAME === 'pull_request') {
+    const envPrNumber = process.env.GITHUB_EVENT_PULL_REQUEST_NUMBER
+    resolvedPrNumber = envPrNumber ? parseInt(envPrNumber, 10) : undefined
+  }
 
-  const octokit = new Octokit({ auth: GITHUB_TOKEN })
+  if (!ipfsRootCid || !dataSetId || !pieceCid || !resolvedPrNumber || !githubToken || !githubRepository) {
+    console.log('Skipping PR comment: missing required information (likely not a PR event)')
+    return
+  }
 
-  const preview = 'https://ipfs.io/ipfs/' + IPFS_ROOT_CID
+  const [owner, repo] = githubRepository.split('/')
+  const issue_number = resolvedPrNumber
+
+  if (!owner || !repo) {
+    console.error('Invalid repository format:', githubRepository)
+    return
+  }
+
+  const octokit = new Octokit({ auth: githubToken })
+
+  const preview = `https://ipfs.io/ipfs/${ipfsRootCid}`
   let statusLine = '- Status: '
-  if (UPLOAD_STATUS === 'uploaded') statusLine += 'Uploaded new content'
-  else if (UPLOAD_STATUS === 'reused-cache') statusLine += 'Reused cached content'
-  else if (UPLOAD_STATUS === 'reused-artifact') statusLine += 'Reused artifact content'
+  if (uploadStatus === 'uploaded') statusLine += 'Uploaded new content'
+  else if (uploadStatus === 'reused-cache') statusLine += 'Reused cached content'
+  else if (uploadStatus === 'reused-artifact') statusLine += 'Reused artifact content'
   else statusLine += 'Unknown (see job logs)'
 
   const body = [
     '<!-- filecoin-pin-upload-action -->',
     'Filecoin Pin Upload ✅',
     '',
-    '- IPFS Root CID: `' + IPFS_ROOT_CID + '`',
-    '- Data Set ID: `' + DATA_SET_ID + '`',
-    '- Piece CID: `' + PIECE_CID + '`',
+    `- IPFS Root CID: \`${ipfsRootCid}\``,
+    `- Data Set ID: \`${dataSetId}\``,
+    `- Piece CID: \`${pieceCid}\``,
     '',
     statusLine,
     '',
     '- Preview (temporary centralized gateway):',
-    '  - ' + preview,
+    `  - ${preview}`,
   ].join('\n')
 
   try {
@@ -54,10 +91,12 @@ async function commentOnPR() {
       owner,
       repo,
       issue_number,
-      per_page: 100
+      per_page: 100,
     })
 
-    const existing = comments.find(c => c.user?.type === 'Bot' && (c.body || '').includes('filecoin-pin-upload-action'))
+    const existing = comments.find(
+      (c) => c.user?.type === 'Bot' && (c.body || '').includes('filecoin-pin-upload-action')
+    )
 
     if (existing) {
       console.log(`Updating existing comment ${existing.id} on PR #${issue_number}`)
@@ -65,7 +104,7 @@ async function commentOnPR() {
         owner,
         repo,
         comment_id: existing.id,
-        body
+        body,
       })
     } else {
       console.log(`Creating new comment on PR #${issue_number}`)
@@ -73,16 +112,13 @@ async function commentOnPR() {
         owner,
         repo,
         issue_number,
-        body
+        body,
       })
     }
 
     console.log('PR comment posted successfully')
   } catch (error) {
-    console.error('Failed to comment on PR:', error?.message || error)
+    console.error('Failed to comment on PR:', getErrorMessage(error))
     process.exit(1)
   }
 }
-
-commentOnPR()
-

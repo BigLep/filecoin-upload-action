@@ -1,8 +1,20 @@
 import { resolve } from 'node:path'
 import { ethers } from 'ethers'
 
-const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key)
+// Import types for JSDoc
+/**
+ * @typedef {import('./types.js').ParsedInputs} ParsedInputs
+ */
 
+/**
+ * Check if object has own property
+ * @param {any} object - Object to check
+ * @param {string} key - Property key
+ * @returns {boolean} True if object has own property
+ */
+const own = (object, key) => Object.hasOwn(object, key)
+
+/** @type {any} */
 let cachedInputsJson
 
 function readInputsJson() {
@@ -23,6 +35,12 @@ function readInputsJson() {
   return cachedInputsJson
 }
 
+/**
+ * Convert value to string with fallback
+ * @param {any} value - Value to convert
+ * @param {string} fallback - Fallback value
+ * @returns {string} String representation
+ */
 function toStringValue(value, fallback = '') {
   if (value === undefined || value === null) return String(fallback ?? '')
   return typeof value === 'string' ? value : String(value)
@@ -63,7 +81,7 @@ export function parseBoolean(v) {
 /**
  * Parse and validate all action inputs
  * @param {string} phase - Action phase (compute, from-cache, or upload/single)
- * @returns {Object} Parsed and validated inputs
+ * @returns {ParsedInputs} Parsed and validated inputs
  */
 export function parseInputs(phase = 'single') {
   const walletPrivateKey = getInput('walletPrivateKey')
@@ -92,17 +110,22 @@ export function parseInputs(phase = 'single') {
   if (token && token.toUpperCase() !== 'USDFC') {
     throw new Error('Only USDFC is supported at this time for payments. Token override will be enabled later.')
   }
-
-  return {
+  /** @type {ParsedInputs} */
+  const parsedInputs = {
     walletPrivateKey,
     contentPath,
     minDays,
     minBalance,
-    maxTopUp,
     withCDN,
     token,
     providerAddress,
   }
+
+  if (maxTopUp != null) {
+    parsedInputs.maxTopUp = maxTopUp
+  }
+
+  return parsedInputs
 }
 
 /**

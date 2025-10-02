@@ -5,10 +5,20 @@
   "version": "0.0.0",
   "description": "Helper runner for Filecoin Pin Upload GitHub Action",
   "dependencies": {
+    "@actions/artifact": "^2.3.2",
+    "@octokit/rest": "^22.0.0",
+    "ethers": "^6.15.0",
     "filecoin-pin": "^0.6.0",
-    "pino": "^9.9.5",
     "picocolors": "^1.1.1",
-    "ethers": "^6.13.4",
-    "@octokit/rest": "^21.0.2"
+    "pino": "^9.13.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.5",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "lint": "npm run typecheck && biome check --no-errors-on-unmatched --files-ignore-unknown=true .",
+    "lint:fix": "biome check --no-errors-on-unmatched --files-ignore-unknown=true --fix .",
+    "typecheck": "tsc --noEmit"
   }
 }

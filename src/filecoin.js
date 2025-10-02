@@ -15,32 +15,42 @@ import {
   initializeSynapse as initSynapse,
 } from 'filecoin-pin/dist/synapse/service.js'
 import { getDownloadURL, uploadToSynapse } from 'filecoin-pin/dist/synapse/upload.js'
+import { CID } from 'multiformats/cid'
 
-import { ERROR_CODES, FilecoinPinError } from './errors.js'
+import { ERROR_CODES, FilecoinPinError, getErrorMessage } from './errors.js'
+
+// Import types for JSDoc
+/**
+ * @typedef {import('./types.js').ParsedInputs} ParsedInputs
+ * @typedef {import('./types.js').BuildResult} BuildResult
+ * @typedef {import('./types.js').UploadResult} UploadResult
+ */
 
 /**
  * Initialize Synapse sdk with error handling
  * @param {string} walletPrivateKey - Wallet private key
- * @param {Object} logger - Logger instance
- * @returns {Object} Synapse service
+ * @param {any} logger - Logger instance
+ * @returns {Promise<any>} Synapse service
  */
 export async function initializeSynapse(walletPrivateKey, logger) {
   try {
+    // @ts-expect-error - synapse types broken.
     return await initSynapse({ privateKey: walletPrivateKey }, logger)
   } catch (error) {
-    if (error.message?.includes('invalid private key')) {
+    const errorMessage = getErrorMessage(error)
+    if (errorMessage.includes('invalid private key')) {
       throw new FilecoinPinError('Invalid private key format', ERROR_CODES.INVALID_PRIVATE_KEY)
     }
-    throw new FilecoinPinError(`Failed to initialize Synapse: ${error.message}`, ERROR_CODES.NETWORK_ERROR)
+    throw new FilecoinPinError(`Failed to initialize Synapse: ${errorMessage}`, ERROR_CODES.NETWORK_ERROR)
   }
 }
 
 /**
  * Handle payment setup and top-ups
- * @param {Object} synapse - Synapse service
- * @param {Object} options - Payment options
- * @param {Object} logger - Logger instance
- * @returns {Object} Updated payment status
+ * @param {any} synapse - Synapse service
+ * @param {{ minDays: number, minBalance: bigint, maxTopUp?: bigint }} options - Payment options
+ * @param {any} logger - Logger instance
+ * @returns {Promise<any>} Updated payment status
  */
 export async function handlePayments(synapse, options, logger) {
   const { minDays, minBalance, maxTopUp } = options
@@ -84,8 +94,8 @@ export async function handlePayments(synapse, options, logger) {
  * Create CAR file from content path
  * @param {string} targetPath - Path to content
  * @param {string} contentPath - Original content path for logging
- * @param {Object} logger - Logger instance
- * @returns {Object} CAR file info
+ * @param {any} logger - Logger instance
+ * @returns {Promise<BuildResult>} CAR file info
  */
 export async function createCarFile(targetPath, contentPath, logger) {
   try {
@@ -94,28 +104,30 @@ export async function createCarFile(targetPath, contentPath, logger) {
     logger.info(`Packing '${contentPath}' into CAR (UnixFS) ...`)
 
     const result = await createCarFromPath(targetPath, { isDirectory, logger })
-    const { carPath, ipfsRootCid, rootCid } = result
+    const { carPath, rootCid } = result
 
     // Handle different possible return formats from filecoin-pin
-    const cid = ipfsRootCid || rootCid
-    if (!cid) {
-      throw new FilecoinPinError(`createCarFromPath returned unexpected format: ${JSON.stringify(Object.keys(result))}`, ERROR_CODES.CAR_CREATE_FAILED)
+    if (!rootCid) {
+      throw new FilecoinPinError(
+        `createCarFromPath returned unexpected format: ${JSON.stringify(Object.keys(result))}`,
+        ERROR_CODES.CAR_CREATE_FAILED
+      )
     }
 
-    return { carPath, ipfsRootCid: cid.toString() }
+    return { carPath, ipfsRootCid: rootCid.toString(), contentPath }
   } catch (error) {
-    throw new FilecoinPinError(`Failed to create CAR file: ${error?.message || error}`, ERROR_CODES.CAR_CREATE_FAILED)
+    throw new FilecoinPinError(`Failed to create CAR file: ${getErrorMessage(error)}`, ERROR_CODES.CAR_CREATE_FAILED)
   }
 }
 
 /**
  * Upload CAR to Filecoin via filecoin-pin
- * @param {Object} synapse - Synapse service
+ * @param {any} synapse - Synapse service
  * @param {string} carPath - Path to CAR file
  * @param {string} ipfsRootCid - Root CID
- * @param {Object} options - Upload options
- * @param {Object} logger - Logger instance
- * @returns {Object} Upload result
+ * @param {{ withCDN: boolean, providerAddress: string }} options - Upload options
+ * @param {any} logger - Logger instance
+ * @returns {Promise<UploadResult>} Upload result
  */
 export async function uploadCarToFilecoin(synapse, carPath, ipfsRootCid, options, logger) {
   const { withCDN, providerAddress } = options
@@ -137,21 +149,18 @@ export async function uploadCarToFilecoin(synapse, carPath, ipfsRootCid, options
 
   // Upload to Filecoin via filecoin-pin
   const synapseService = { synapse, storage, providerInfo }
-  const { pieceCid, pieceId, dataSetId } = await uploadToSynapse(
-    synapseService,
-    carBytes,
-    { toString: () => ipfsRootCid },
-    logger,
-    { contextId: `gha-upload-${Date.now()}` }
-  )
+  const cid = CID.parse(ipfsRootCid)
+  const { pieceCid, pieceId, dataSetId } = await uploadToSynapse(synapseService, carBytes, cid, logger, {
+    contextId: `gha-upload-${Date.now()}`,
+  })
 
-  const providerId = providerInfo.id ?? ''
+  const providerId = String(providerInfo.id ?? '')
   const providerName = providerInfo.name ?? (providerInfo.serviceProvider || '')
   const previewURL = getDownloadURL(providerInfo, pieceCid) || `https://ipfs.io/ipfs/${ipfsRootCid}`
 
   return {
     pieceCid,
-    pieceId,
+    pieceId: pieceId != null ? String(pieceId) : '',
     dataSetId,
     provider: { id: providerId, name: providerName },
     previewURL,
@@ -161,11 +170,12 @@ export async function uploadCarToFilecoin(synapse, carPath, ipfsRootCid, options
 
 /**
  * Cleanup filecoin-pin service
+ * @returns {Promise<void>}
  */
 export async function cleanupSynapse() {
   try {
     await cleanupSynapseService()
   } catch (error) {
-    console.error('Cleanup failed:', error?.message || error)
+    console.error('Cleanup failed:', getErrorMessage(error))
   }
 }
