@@ -1,3 +1,9 @@
+## [1.0.7](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.6...v1.0.7) (2025-10-02)
+
+### Bug Fixes
+
+* use build run id for artifact in upload flow ([556d7b6](https://github.com/SgtPooki/filecoin-upload-action/commit/556d7b697d15cfaa9f2db0e5cf2a1de209214303))
+
 ## [1.0.6](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.5...v1.0.6) (2025-10-02)
 
 ### Bug Fixes
