@@ -1,3 +1,9 @@
+## [1.0.2](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.1...v1.0.2) (2025-10-02)
+
+### Bug Fixes
+
+* regular prs are not flagged as fork prs ([a7bef0e](https://github.com/SgtPooki/filecoin-upload-action/commit/a7bef0e091b5fcb817783fc3660a49b20d52c9f4))
+
 ## [1.0.1](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.0...v1.0.1) (2025-10-02)
 
 ### Bug Fixes
