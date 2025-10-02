@@ -257,8 +257,8 @@ The build mode uses intelligent artifact naming to ensure consistency between bu
 1. **Manual override**: If `artifact_name` input is provided, use it
 2. **Workflow run context**: Extract PR number from `workflow_run.pull_requests[0].number`
    - If found: Look for `filecoin-build-pr-{PR_NUMBER}`
-   - If not found: Look for `filecoin-build-{WORKFLOW_RUN_ID}`
-3. **Fallback**: Use `filecoin-build-{RUN_ID}`
+   - If not found: Look for `filecoin-build-{BUILD_WORKFLOW_RUN_ID}`
+3. **Fallback**: Use `filecoin-build-{BUILD_WORKFLOW_RUN_ID}` (not current upload run ID)
 
 **Why this matters**: The two-workflow pattern can run build mode on different events (pull_request, push after merge), but upload mode always runs on workflow_run. This logic ensures both modes use the same artifact name regardless of the trigger event.
 

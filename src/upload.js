@@ -177,10 +177,9 @@ export async function runUpload() {
   const event = await readEventPayload()
 
   // Determine which artifact to download and download it
-  const artifactName = await determineArtifactName(event)
-  console.log(`Looking for artifact: ${artifactName}`)
-
   const buildRunId = resolveBuildRunId(event)
+  const artifactName = await determineArtifactName(event, buildRunId)
+  console.log(`Looking for artifact: ${artifactName}`)
 
   if (!buildRunId) {
     throw new Error(

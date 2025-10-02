@@ -382,11 +382,12 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
  * Determine artifact name based on GitHub context
  * This function handles both build mode and upload mode scenarios
  * @param {any} [eventOverride] - Optional event payload override for testing
+ * @param {string} [buildRunId] - Optional build run ID to use as fallback (for upload mode)
  * @returns {Promise<string>} The artifact name to use
  */
-export async function determineArtifactName(eventOverride) {
+export async function determineArtifactName(eventOverride, buildRunId) {
   const eventName = process.env.GITHUB_EVENT_NAME || ''
-  const runId = process.env.GITHUB_RUN_ID || ''
+  const currentRunId = process.env.GITHUB_RUN_ID || ''
 
   // Manual override for testing
   const manualOverride = getInput('artifact_name')
@@ -429,8 +430,9 @@ export async function determineArtifactName(eventOverride) {
     return artifactName
   }
 
-  // Fallback to run ID
-  const artifactName = `filecoin-build-${runId}`
+  // Fallback to run ID - use buildRunId if provided (upload mode), otherwise current run ID (build mode)
+  const fallbackRunId = buildRunId || currentRunId
+  const artifactName = `filecoin-build-${fallbackRunId}`
   console.log(`::notice::Using fallback artifact name: ${artifactName}`)
   return artifactName
 }
