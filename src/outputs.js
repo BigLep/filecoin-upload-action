@@ -44,10 +44,8 @@ export async function writeSummary(context, status) {
     const provider = context?.provider || {}
     const previewURL = context?.preview_url || ''
     const carPath = context?.car_path || ''
+    const carDownloadUrl = context?.car_download_url || (carPath ? `[download link](${carPath})` : 'download')
     const paymentStatus = context?.payment_status || {}
-
-    // Generate CAR download link
-    const carDownloadUrl = carPath ? `[download link](${carPath})` : 'download'
 
     const md = [
       '## Filecoin Pin Upload',

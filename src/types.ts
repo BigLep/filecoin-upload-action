@@ -6,6 +6,7 @@ export interface CombinedContext {
   ipfs_root_cid?: string
   car_path?: string
   car_filename?: string
+  car_download_url?: string
   artifact_name?: string
   build_run_id?: string
   event_name?: string

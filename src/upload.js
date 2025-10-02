@@ -2,6 +2,7 @@ import { access, copyFile, mkdir, readdir, readFile, rm, unlink } from 'node:fs/
 import { join } from 'node:path'
 import { Octokit } from '@octokit/rest'
 import { ethers } from 'ethers'
+import { getPaymentStatus } from 'filecoin-pin/dist/synapse/payments.js'
 import pc from 'picocolors'
 import pino from 'pino'
 import {
@@ -10,12 +11,19 @@ import {
   readEventPayload,
   restoreCache,
   saveCache,
+  uploadCarArtifact,
   uploadResultArtifact,
 } from './artifacts.js'
 import { commentOnPR } from './comments/comment.js'
 import { contextWithCar, loadContext, mergeAndSaveContext } from './context.js'
 import { getErrorMessage } from './errors.js'
-import { cleanupSynapse, handlePayments, initializeSynapse, uploadCarToFilecoin } from './filecoin.js'
+import {
+  calculateStorageRunway,
+  cleanupSynapse,
+  handlePayments,
+  initializeSynapse,
+  uploadCarToFilecoin,
+} from './filecoin.js'
 import { getInput, parseInputs, resolveContentPath } from './inputs.js'
 import { writeOutputs, writeSummary } from './outputs.js'
 
@@ -293,9 +301,11 @@ export async function runUpload() {
 
     // Ensure balances are correct even when reusing
     let paymentStatus = null
+    let initialPaymentStatus = null
     try {
       if (walletPrivateKey) {
         const synapse = await initializeSynapse(walletPrivateKey, logger)
+        initialPaymentStatus = await getPaymentStatus(synapse)
         paymentStatus = await handlePayments(synapse, { minDays, maxBalance, maxTopUp }, logger)
       }
     } catch (error) {
@@ -306,14 +316,17 @@ export async function runUpload() {
 
     // Update context with payment status if available
     if (paymentStatus) {
+      // Calculate the amount deposited in this run
+      const initialBalance = initialPaymentStatus?.depositedAmount || 0n
+      const finalBalance = paymentStatus?.depositedAmount || 0n
+      const depositedThisRun = finalBalance - initialBalance
+
       await mergeAndSaveContext(workspace, {
         payment_status: {
           depositedAmount: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
           currentBalance: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
-          storageRunway: paymentStatus?.runway ? `${paymentStatus.runway} days` : 'Unknown',
-          depositedThisRun: paymentStatus?.depositedAmount
-            ? ethers.formatUnits(paymentStatus.depositedAmount, 18)
-            : '0',
+          storageRunway: calculateStorageRunway(paymentStatus),
+          depositedThisRun: ethers.formatUnits(depositedThisRun, 18),
         },
       })
       // Reload context after payment status update
@@ -368,12 +381,20 @@ export async function runUpload() {
     throw new Error('walletPrivateKey is required for upload mode')
   }
   const synapse = await initializeSynapse(walletPrivateKey, logger)
+
+  // Get initial payment status to track deposits
+  const initialPaymentStatus = await getPaymentStatus(synapse)
   const paymentStatus = await handlePayments(synapse, { minDays, maxBalance, maxTopUp }, logger)
 
   const uploadResult = /** @type {UploadResult} */ (
     await uploadCarToFilecoin(synapse, carPath, rootCid, { withCDN, providerAddress }, logger)
   )
   const { pieceCid, pieceId, dataSetId, provider, previewURL, network } = uploadResult
+
+  // Calculate the amount deposited in this run
+  const initialBalance = initialPaymentStatus?.depositedAmount || 0n
+  const finalBalance = paymentStatus?.depositedAmount || 0n
+  const depositedThisRun = finalBalance - initialBalance
 
   // Update context
   await mergeAndSaveContext(workspace, {
@@ -389,18 +410,26 @@ export async function runUpload() {
     payment_status: {
       depositedAmount: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
       currentBalance: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
-      storageRunway: paymentStatus?.runway ? `${paymentStatus.runway} days` : 'Unknown',
-      depositedThisRun: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
+      storageRunway: calculateStorageRunway(paymentStatus),
+      depositedThisRun: ethers.formatUnits(depositedThisRun, 18),
     },
   })
 
   // Save cache
   await saveCache(workspace, cacheKey, ctxDir)
 
+  // Upload CAR file as artifact and get download URL
+  const carDownloadUrl = await uploadCarArtifact(workspace, carPath, rootCid)
+
   // Upload result artifact
   const resultArtifactName = `filecoin-pin-${rootCid}`
   const contextJsonPath = join(workspace, 'action-context', 'context.json')
   await uploadResultArtifact(workspace, resultArtifactName, carPath, contextJsonPath)
+
+  // Update context with CAR download URL
+  await mergeAndSaveContext(workspace, {
+    car_download_url: carDownloadUrl,
+  })
 
   // Write outputs
   await writeOutputs({

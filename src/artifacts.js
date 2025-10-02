@@ -184,6 +184,46 @@ export async function uploadResultArtifact(workspace, artifactName, carPath, con
 }
 
 /**
+ * Upload CAR file as a standalone artifact and return download URL
+ * @param {string} workspace
+ * @param {string} carPath
+ * @param {string} rootCid
+ * @returns {Promise<string>} Download URL for the CAR file
+ */
+export async function uploadCarArtifact(workspace, carPath, rootCid) {
+  ensureRuntimeToken(`upload CAR artifact for ${rootCid}`)
+  const artifact = new DefaultArtifactClient()
+
+  const artifactName = `filecoin-car-${rootCid}`
+
+  try {
+    const { id: artifactId } = await artifact.uploadArtifact(artifactName, [carPath], workspace, {
+      retentionDays: 30, // Keep CAR artifacts longer
+      compressionLevel: 6,
+    })
+
+    console.log(`Uploaded CAR artifact: ${artifactName} (ID: ${artifactId})`)
+
+    // Generate download URL
+    const repoFull = process.env.GITHUB_REPOSITORY
+    const runId = process.env.GITHUB_RUN_ID
+    if (!repoFull || !runId) {
+      console.warn('Missing repository or run ID for CAR download URL generation')
+      return `[download link](${carPath})`
+    }
+
+    const [owner, repo] = repoFull.split('/')
+    const downloadUrl = `https://github.com/${owner}/${repo}/actions/runs/${runId}/artifacts/${artifactId}`
+    console.log(`Generated CAR download URL: ${downloadUrl}`)
+    return `[download link](${downloadUrl})`
+  } catch (error) {
+    console.error(`Failed to upload CAR artifact ${artifactName}:`, getErrorMessage(error))
+    // Fallback to local path if upload fails
+    return `[download link](${carPath})`
+  }
+}
+
+/**
  * Save cache using GitHub API
  * @param {string} workspace
  * @param {string} cacheKey
