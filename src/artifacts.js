@@ -1,5 +1,5 @@
-import { access, mkdir, readFile, rename, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { copyFile, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { DefaultArtifactClient } from '@actions/artifact'
 import { getErrorMessage } from './errors.js'
 
@@ -34,6 +34,85 @@ function ensureRuntimeToken(feature, fatal = true) {
 }
 
 /**
+ * Determine whether the supplied path is a directory.
+ * @param {string} path
+ */
+async function pathIsDirectory(path) {
+  try {
+    const stats = await stat(path)
+    return stats.isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Safely list directory entries, returning an empty list on error.
+ * @param {string} path
+ * @returns {Promise<string[]>}
+ */
+async function safeListDir(path) {
+  try {
+    return await readdir(path)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Recursively copy files and directories.
+ * @param {string} src
+ * @param {string} dest
+ */
+async function copyRecursive(src, dest) {
+  let stats
+  try {
+    stats = await stat(src)
+  } catch {
+    return
+  }
+
+  if (stats.isDirectory()) {
+    await mkdir(dest, { recursive: true })
+    const entries = await readdir(src)
+    for (const entry of entries) {
+      await copyRecursive(join(src, entry), join(dest, entry))
+    }
+    return
+  }
+
+  await mkdir(dirname(dest), { recursive: true })
+  await copyFile(src, dest)
+}
+
+/**
+ * Replace the target directory with the files from the source directory.
+ * @param {string} sourceDir
+ * @param {string} targetDir
+ */
+async function materializeContextDir(sourceDir, targetDir) {
+  await rm(targetDir, { recursive: true, force: true })
+  await mkdir(targetDir, { recursive: true })
+  const entries = await readdir(sourceDir)
+  for (const entry of entries) {
+    await copyRecursive(join(sourceDir, entry), join(targetDir, entry))
+  }
+}
+
+/**
+ * Resolve the directory that holds the action-context contents within the extracted artifact.
+ * @param {string} tempDir
+ * @returns {Promise<string>}
+ */
+async function resolveContextSourceDir(tempDir) {
+  const preferred = join(tempDir, 'action-context')
+  if (await pathIsDirectory(preferred)) {
+    return preferred
+  }
+  return tempDir
+}
+
+/**
  * Upload build artifact using GitHub API
  * @param {string} workspace
  * @param {string} artifactName
@@ -45,7 +124,15 @@ export async function uploadBuildArtifact(workspace, artifactName, retentionDays
   const contextDir = join(workspace, 'action-context')
 
   try {
-    const { id: artifactId } = await artifact.uploadArtifact(artifactName, [contextDir], workspace, {
+    const entries = await safeListDir(contextDir)
+    if (entries.length === 0) {
+      throw new Error('action-context directory is empty; nothing to upload')
+    }
+
+    const files = entries.map((entry) => join(contextDir, entry))
+    console.log(`[artifact-debug] Uploading build artifact with entries: ${entries.join(', ')}`)
+
+    const { id: artifactId } = await artifact.uploadArtifact(artifactName, files, workspace, {
       retentionDays,
       compressionLevel: 6,
     })
@@ -95,7 +182,16 @@ export async function saveCache(workspace, cacheKey, contextPath) {
 
   const artifact = new DefaultArtifactClient()
   try {
-    const { id: artifactId } = await artifact.uploadArtifact(artifactName, [contextPath], workspace, {
+    const entries = await safeListDir(contextPath)
+    if (entries.length === 0) {
+      console.log(`Cache directory empty for ${cacheKey}; skipping cache save`)
+      return
+    }
+
+    const files = entries.map((entry) => join(contextPath, entry))
+    console.log(`[artifact-debug] Saving cache ${cacheKey} with entries: ${entries.join(', ')}`)
+
+    const { id: artifactId } = await artifact.uploadArtifact(artifactName, files, workspace, {
       retentionDays: 7, // Cache artifacts have shorter retention
       compressionLevel: 6,
     })
@@ -166,22 +262,18 @@ export async function restoreCache(workspace, cacheKey, buildRunId) {
       findBy,
     })
 
-    const extractedCtxDir = join(tempDir, 'action-context')
-    try {
-      await access(extractedCtxDir)
-    } catch (error) {
-      throw new Error(`Cache artifact missing action-context directory: ${getErrorMessage(error)}`)
-    }
+    const sourceDir = await resolveContextSourceDir(tempDir)
+    const listing = await safeListDir(sourceDir)
+    console.log(`[artifact-debug] cache artifact contents: ${listing.join(', ')}`)
 
-    await rm(ctxDir, { recursive: true, force: true })
-    await rename(extractedCtxDir, ctxDir)
+    await materializeContextDir(sourceDir, ctxDir)
 
     const ctxPath = join(ctxDir, 'context.json')
     try {
       const ctxContents = await readFile(ctxPath, 'utf8')
-      console.log(`[artifact-debug] context.json from build artifact: ${ctxContents}`)
+      console.log(`[artifact-debug] context.json from cache artifact: ${ctxContents}`)
     } catch (error) {
-      console.warn('[artifact-debug] No context.json found after build artifact download:', getErrorMessage(error))
+      console.warn('[artifact-debug] No context.json found after cache restore:', getErrorMessage(error))
     }
     await rm(tempDir, { recursive: true, force: true })
 
@@ -248,22 +340,18 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
       findBy,
     })
 
-    const extractedCtxDir = join(tempDir, 'action-context')
-    try {
-      await access(extractedCtxDir)
-    } catch (error) {
-      throw new Error(`Downloaded artifact missing action-context directory: ${getErrorMessage(error)}`)
-    }
+    const sourceDir = await resolveContextSourceDir(tempDir)
+    const listing = await safeListDir(sourceDir)
+    console.log(`[artifact-debug] build artifact contents: ${listing.join(', ')}`)
 
-    await rm(ctxDir, { recursive: true, force: true })
-    await rename(extractedCtxDir, ctxDir)
+    await materializeContextDir(sourceDir, ctxDir)
 
     const ctxPath = join(ctxDir, 'context.json')
     try {
       const ctxContents = await readFile(ctxPath, 'utf8')
-      console.log(`[artifact-debug] context.json from cache artifact: ${ctxContents}`)
+      console.log(`[artifact-debug] context.json from build artifact: ${ctxContents}`)
     } catch (error) {
-      console.warn('[artifact-debug] No context.json found after cache restore:', getErrorMessage(error))
+      console.warn('[artifact-debug] No context.json found after build artifact download:', getErrorMessage(error))
     }
     await rm(tempDir, { recursive: true, force: true })
 
