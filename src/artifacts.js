@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { access, mkdir, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DefaultArtifactClient } from '@actions/artifact'
 import { getErrorMessage } from './errors.js'
@@ -115,6 +115,8 @@ export async function saveCache(workspace, cacheKey, contextPath) {
  */
 export async function restoreCache(workspace, cacheKey, buildRunId) {
   const artifactName = `cache-${cacheKey}`
+  const tempDir = join(workspace, '.filecoin-cache-download')
+  const ctxDir = join(workspace, 'action-context')
 
   try {
     if (!ensureRuntimeToken(`restore cache ${artifactName}`, false)) {
@@ -122,6 +124,9 @@ export async function restoreCache(workspace, cacheKey, buildRunId) {
     }
 
     const artifact = new DefaultArtifactClient()
+
+    await rm(tempDir, { recursive: true, force: true })
+    await mkdir(tempDir, { recursive: true })
 
     // Get repository information
     const repoFull = process.env.GITHUB_REPOSITORY
@@ -157,9 +162,20 @@ export async function restoreCache(workspace, cacheKey, buildRunId) {
     }
 
     const _downloadResponse = await artifact.downloadArtifact(targetArtifact.id, {
-      path: workspace,
+      path: tempDir,
       findBy,
     })
+
+    const extractedCtxDir = join(tempDir, 'action-context')
+    try {
+      await access(extractedCtxDir)
+    } catch (error) {
+      throw new Error(`Cache artifact missing action-context directory: ${getErrorMessage(error)}`)
+    }
+
+    await rm(ctxDir, { recursive: true, force: true })
+    await rename(extractedCtxDir, ctxDir)
+    await rm(tempDir, { recursive: true, force: true })
 
     console.log(`Restored cache: ${cacheKey}`)
     return true
@@ -177,9 +193,11 @@ export async function restoreCache(workspace, cacheKey, buildRunId) {
  */
 export async function downloadBuildArtifact(workspace, artifactName, buildRunId) {
   const ctxDir = join(workspace, 'action-context')
+  const tempDir = join(workspace, '.filecoin-build-download')
 
   try {
-    await mkdir(ctxDir, { recursive: true })
+    await rm(tempDir, { recursive: true, force: true })
+    await mkdir(tempDir, { recursive: true })
 
     ensureRuntimeToken(`download artifact ${artifactName}`)
     const artifact = new DefaultArtifactClient()
@@ -218,9 +236,20 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
     console.log(`Found ${artifacts.artifacts.length} artifact(s)`)
 
     const _downloadResponse = await artifact.downloadArtifact(targetArtifact.id, {
-      path: workspace,
+      path: tempDir,
       findBy,
     })
+
+    const extractedCtxDir = join(tempDir, 'action-context')
+    try {
+      await access(extractedCtxDir)
+    } catch (error) {
+      throw new Error(`Downloaded artifact missing action-context directory: ${getErrorMessage(error)}`)
+    }
+
+    await rm(ctxDir, { recursive: true, force: true })
+    await rename(extractedCtxDir, ctxDir)
+    await rm(tempDir, { recursive: true, force: true })
 
     console.log(`Downloaded and extracted artifact ${artifactName}`)
   } catch (error) {
