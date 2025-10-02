@@ -157,7 +157,7 @@ The action follows SOLID principles with clear separation of concerns:
    ├─> run.mjs reads mode='build' input
    ├─> Calls build.js runBuild() function
    ├─> Creates CAR file from content directory
-   ├─> Determines artifact name based on event (PR or run ID)
+   ├─> Determines artifact name based on event (PR number when available, otherwise run ID)
    ├─> Updates context with PR metadata (if applicable)
    ├─> Normalizes context (copies CAR to action-context/)
    ├─> Saves everything to action-context/context.json
@@ -223,8 +223,9 @@ We use **TWO types of artifacts** for different purposes:
 - `context.json` (combined build metadata)
 
 **Naming**:
-- PR builds: `filecoin-build-pr-123`
-- Push builds: `filecoin-build-18171771267`
+- PR builds: `filecoin-build-pr-123` (when running on pull_request event)
+- Merge builds: `filecoin-build-pr-123` (when running on push event from merged PR)
+- Other builds: `filecoin-build-18171771267` (fallback to run ID)
 
 ### 2. Upload Artifacts: `filecoin-pin-{CID}`
 
@@ -240,6 +241,26 @@ We use **TWO types of artifacts** for different purposes:
 **Naming**: `filecoin-pin-bafybeiabc...` (uses IPFS Root CID)
 
 **Why this exists**: If you build the same content twice (e.g., rebuild without changes), we can detect it's the same CID and reuse the previous upload without paying again!
+
+### Artifact Naming Logic
+
+The build mode uses intelligent artifact naming to ensure consistency between build and upload phases:
+
+**Build Mode Logic** (in `build.js`):
+1. **Manual override**: If `artifact_name` input is provided, use it
+2. **Pull request events**: Use `filecoin-build-pr-{PR_NUMBER}`
+3. **Push events**: Check commit message for "Merge pull request #X" pattern
+   - If found: Use `filecoin-build-pr-{PR_NUMBER}`
+   - If not found: Use `filecoin-build-{RUN_ID}`
+
+**Upload Mode Logic** (in `upload.js`):
+1. **Manual override**: If `artifact_name` input is provided, use it
+2. **Workflow run context**: Extract PR number from `workflow_run.pull_requests[0].number`
+   - If found: Look for `filecoin-build-pr-{PR_NUMBER}`
+   - If not found: Look for `filecoin-build-{WORKFLOW_RUN_ID}`
+3. **Fallback**: Use `filecoin-build-{RUN_ID}`
+
+**Why this matters**: The two-workflow pattern can run build mode on different events (pull_request, push after merge), but upload mode always runs on workflow_run. This logic ensures both modes use the same artifact name regardless of the trigger event.
 
 ---
 

@@ -4,7 +4,14 @@ import { Octokit } from '@octokit/rest'
 import { ethers } from 'ethers'
 import pc from 'picocolors'
 import pino from 'pino'
-import { downloadBuildArtifact, restoreCache, saveCache, uploadResultArtifact } from './artifacts.js'
+import {
+  determineArtifactName,
+  downloadBuildArtifact,
+  readEventPayload,
+  restoreCache,
+  saveCache,
+  uploadResultArtifact,
+} from './artifacts.js'
 import { createArtifacts } from './cache.js'
 import { commentOnPR } from './comments/comment.js'
 import { contextWithCar, loadContext, mergeAndSaveContext } from './context.js'
@@ -19,59 +26,6 @@ import { writeOutputs, writeSummary } from './outputs.js'
  * @typedef {import('./types.js').ParsedInputs} ParsedInputs
  * @typedef {import('./types.js').UploadResult} UploadResult
  */
-
-/**
- * Read GitHub event payload
- */
-async function readEventPayload() {
-  const eventPath = process.env.GITHUB_EVENT_PATH
-  if (!eventPath) return {}
-  try {
-    const content = await readFile(eventPath, 'utf8')
-    return JSON.parse(content)
-  } catch (error) {
-    console.warn('Failed to read event payload:', getErrorMessage(error))
-    return {}
-  }
-}
-
-/**
- * Determine artifact name for upload mode
- * @param {any} [eventOverride] - Optional pre-loaded event payload to avoid rereading
- */
-async function determineArtifactName(eventOverride) {
-  const runId = process.env.GITHUB_RUN_ID || ''
-
-  // Manual override for testing
-  const manualOverride = getInput('artifact_name')
-  if (manualOverride) {
-    console.log(`Using manually provided artifact name: ${manualOverride}`)
-    console.log(`::notice::Using manually provided artifact name: ${manualOverride}`)
-    return manualOverride
-  }
-
-  // Read event payload to get workflow_run info
-  const event = eventOverride ?? (await readEventPayload())
-  const workflowRunPrNumber = event.workflow_run?.pull_requests?.[0]?.number
-  const workflowRunId = event.workflow_run?.id
-
-  // Prioritize PR-based artifact naming when available
-  if (workflowRunPrNumber) {
-    const artifactName = `filecoin-build-pr-${workflowRunPrNumber}`
-    console.log(`::notice::Auto-detected artifact name from workflow_run PR: ${artifactName}`)
-    return artifactName
-  }
-  if (workflowRunId) {
-    const artifactName = `filecoin-build-${workflowRunId}`
-    console.log(`::notice::Auto-detected artifact name from workflow_run: ${artifactName}`)
-    return artifactName
-  }
-  // Fallback for manual triggers
-  console.warn('No artifact_name provided and no workflow_run context. Using fallback.')
-  const fallbackName = `filecoin-build-${runId}`
-  console.log(`::notice::Using fallback artifact name: ${fallbackName}`)
-  return fallbackName
-}
 
 /**
  * Resolve the originating build workflow run ID

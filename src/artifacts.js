@@ -1,9 +1,25 @@
 import { copyFile, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { DefaultArtifactClient } from '@actions/artifact'
+import { getInput } from '@actions/core'
 import { getErrorMessage } from './errors.js'
 
 let runtimeGuardWarned = false
+
+/**
+ * Read GitHub event payload
+ */
+export async function readEventPayload() {
+  const eventPath = process.env.GITHUB_EVENT_PATH
+  if (!eventPath) return {}
+  try {
+    const content = await readFile(eventPath, 'utf8')
+    return JSON.parse(content)
+  } catch (error) {
+    console.warn('Failed to read event payload:', getErrorMessage(error))
+    return {}
+  }
+}
 
 /**
  * Ensure the GitHub Actions runtime token is available.
@@ -360,4 +376,61 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
     console.error(`Failed to download artifact ${artifactName}:`, getErrorMessage(error))
     throw error
   }
+}
+
+/**
+ * Determine artifact name based on GitHub context
+ * This function handles both build mode and upload mode scenarios
+ * @param {any} [eventOverride] - Optional event payload override for testing
+ * @returns {Promise<string>} The artifact name to use
+ */
+export async function determineArtifactName(eventOverride) {
+  const eventName = process.env.GITHUB_EVENT_NAME || ''
+  const runId = process.env.GITHUB_RUN_ID || ''
+
+  // Manual override for testing
+  const manualOverride = getInput('artifact_name')
+  if (manualOverride) {
+    console.log(`Using manually provided artifact name: ${manualOverride}`)
+    return manualOverride
+  }
+
+  // Read event payload to get context info
+  const event = eventOverride ?? (await readEventPayload())
+
+  // Check for PR number in multiple ways to handle different event types
+  let prNumber = null
+
+  // Direct pull_request event
+  if (eventName === 'pull_request' && event.pull_request?.number) {
+    prNumber = event.pull_request.number
+  }
+  // pull_request_target event
+  else if (eventName === 'pull_request_target' && event.pull_request?.number) {
+    prNumber = event.pull_request.number
+  }
+  // Push event - check if this is a merge commit from a PR
+  else if (eventName === 'push' && event.head_commit?.message) {
+    // Look for "Merge pull request #X" pattern in commit message
+    const mergeMatch = event.head_commit.message.match(/Merge pull request #(\d+)/)
+    if (mergeMatch) {
+      prNumber = parseInt(mergeMatch[1], 10)
+    }
+  }
+  // Workflow run event - extract PR number from workflow_run context
+  else if (eventName === 'workflow_run' && event.workflow_run?.pull_requests?.[0]?.number) {
+    prNumber = event.workflow_run.pull_requests[0].number
+  }
+
+  // Use PR number if available, otherwise fall back to run ID
+  if (prNumber) {
+    const artifactName = `filecoin-build-pr-${prNumber}`
+    console.log(`::notice::Auto-detected artifact name from PR: ${artifactName}`)
+    return artifactName
+  }
+
+  // Fallback to run ID
+  const artifactName = `filecoin-build-${runId}`
+  console.log(`::notice::Using fallback artifact name: ${artifactName}`)
+  return artifactName
 }

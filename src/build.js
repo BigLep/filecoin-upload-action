@@ -1,13 +1,11 @@
 import { constants as fsConstants } from 'node:fs'
-import { access, copyFile, mkdir, readdir, readFile, unlink } from 'node:fs/promises'
+import { access, copyFile, mkdir, readdir, unlink } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import pc from 'picocolors'
 import pino from 'pino'
-import { uploadBuildArtifact } from './artifacts.js'
+import { determineArtifactName, readEventPayload, uploadBuildArtifact } from './artifacts.js'
 import { contextWithCar, mergeAndSaveContext } from './context.js'
-import { getErrorMessage } from './errors.js'
 import { createCarFile } from './filecoin.js'
-import { getInput } from './inputs.js'
 import { writeOutputs } from './outputs.js'
 
 // Import types for JSDoc
@@ -16,44 +14,6 @@ import { writeOutputs } from './outputs.js'
  * @typedef {import('./types.js').ParsedInputs} ParsedInputs
  * @typedef {import('./types.js').BuildResult} BuildResult
  */
-
-/**
- * Read GitHub event payload
- */
-async function readEventPayload() {
-  const eventPath = process.env.GITHUB_EVENT_PATH
-  if (!eventPath) return {}
-  try {
-    const content = await readFile(eventPath, 'utf8')
-    return JSON.parse(content)
-  } catch (error) {
-    console.warn('Failed to read event payload:', getErrorMessage(error))
-    return {}
-  }
-}
-
-/**
- * Determine artifact name based on GitHub context
- */
-async function determineArtifactName() {
-  const eventName = process.env.GITHUB_EVENT_NAME || ''
-  const runId = process.env.GITHUB_RUN_ID || ''
-
-  // Manual override for testing
-  const manualOverride = getInput('artifact_name')
-  if (manualOverride) {
-    console.log(`Using manually provided artifact name: ${manualOverride}`)
-    return manualOverride
-  }
-
-  // Read event payload to get PR info
-  const event = await readEventPayload()
-
-  if (eventName === 'pull_request' && event.pull_request?.number) {
-    return `filecoin-build-pr-${event.pull_request.number}`
-  }
-  return `filecoin-build-${runId}`
-}
 
 /**
  * Update context with PR and build metadata
