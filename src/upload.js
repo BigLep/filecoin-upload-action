@@ -40,8 +40,9 @@ async function readEventPayload() {
 
 /**
  * Determine artifact name for upload mode
+ * @param {any} [eventOverride] - Optional pre-loaded event payload to avoid rereading
  */
-async function determineArtifactName() {
+async function determineArtifactName(eventOverride) {
   const runId = process.env.GITHUB_RUN_ID || ''
 
   // Manual override for testing
@@ -52,7 +53,7 @@ async function determineArtifactName() {
   }
 
   // Read event payload to get workflow_run info
-  const event = await readEventPayload()
+  const event = eventOverride ?? (await readEventPayload())
   const workflowRunPrNumber = event.workflow_run?.pull_requests?.[0]?.number
   const workflowRunId = event.workflow_run?.id
 
@@ -65,6 +66,25 @@ async function determineArtifactName() {
   // Fallback for manual triggers
   console.warn('No artifact_name provided and no workflow_run context. Using fallback.')
   return `filecoin-build-${runId}`
+}
+
+/**
+ * Resolve the originating build workflow run ID
+ * @param {any} event - GitHub event payload
+ */
+function resolveBuildRunId(event) {
+  const override = getInput('build_run_id')
+  if (override) return override
+
+  const envRunId = process.env.GITHUB_EVENT_WORKFLOW_RUN_ID
+  if (envRunId) return envRunId
+
+  const workflowRunId = event?.workflow_run?.id ?? event?.workflow_run?.run_id ?? event?.workflow_run?.original_run_id
+  if (workflowRunId) return String(workflowRunId)
+
+  console.warn('Unable to determine the originating build workflow run ID. Using empty string.')
+
+  return ''
 }
 
 /**
@@ -195,11 +215,20 @@ export async function runUpload() {
   const { walletPrivateKey, contentPath, minDays, minBalance, maxTopUp, withCDN, providerAddress } = inputs
   const targetPath = resolveContentPath(contentPath)
 
+  const event = await readEventPayload()
+
   // Determine which artifact to download and download it
-  const artifactName = await determineArtifactName()
+  const artifactName = await determineArtifactName(event)
   console.log(`Looking for artifact: ${artifactName}`)
 
-  const buildRunId = getInput('build_run_id') || process.env.GITHUB_EVENT_WORKFLOW_RUN_ID || ''
+  const buildRunId = resolveBuildRunId(event)
+
+  if (!buildRunId) {
+    throw new Error(
+      'Unable to determine the originating build workflow run ID. ' +
+        'Ensure this upload workflow is triggered by workflow_run or pass build_run_id explicitly when running manually.'
+    )
+  }
 
   // Download the build artifact
   await downloadBuildArtifact(workspace, artifactName, buildRunId)
