@@ -1,3 +1,9 @@
+## [1.0.6](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.5...v1.0.6) (2025-10-02)
+
+### Bug Fixes
+
+* common artifact name resolution ([e5e2f41](https://github.com/SgtPooki/filecoin-upload-action/commit/e5e2f41b0cf4ccb07446d1eeca8407fe408d2aaf))
+
 ## [1.0.5](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.4...v1.0.5) (2025-10-02)
 
 ### Bug Fixes
