@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.2...v1.0.3) (2025-10-02)
+
+### Bug Fixes
+
+* cap spend via maxBalance, remove minBalance ([#5](https://github.com/SgtPooki/filecoin-upload-action/issues/5)) ([808d623](https://github.com/SgtPooki/filecoin-upload-action/commit/808d623645c72bd92054ac19e8587bcf8c4cee55))
+
 ## [1.0.2](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.1...v1.0.2) (2025-10-02)
 
 ### Bug Fixes
