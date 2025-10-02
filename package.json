@@ -27,7 +27,7 @@
     "lint": "npm run typecheck && biome check --no-errors-on-unmatched --files-ignore-unknown=true .",
     "lint:fix": "biome check --no-errors-on-unmatched --files-ignore-unknown=true --fix .",
     "typecheck": "tsc --noEmit",
-    "semantic-release": "semantic-release",
-    "dry-run": "semantic-release --dry-run"
+    "release": "semantic-release",
+    "release:dry-run": "semantic-release --dry-run"
   }
 }
