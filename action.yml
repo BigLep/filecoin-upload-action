@@ -157,39 +157,4 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
       run: node src/run.mjs
 
-    # Upload build artifacts (build mode only)
-    - name: Upload build artifacts
-      if: ${{ inputs.mode == 'build' && steps.run.outputs.artifact_name }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.run.outputs.artifact_name }}
-        path: ${{ github.workspace }}/action-context
-        retention-days: 1
-
-    # Restore cache for reuse (upload/all modes only)
-    - name: Restore upload cache
-      if: ${{ (inputs.mode == 'upload' || inputs.mode == 'all') && steps.run.outputs.cache_key }}
-      id: cache-restore
-      uses: actions/cache/restore@v4
-      with:
-        key: ${{ steps.run.outputs.cache_key }}
-        path: action-context
-
-    # Save cache (upload/all modes only, on successful upload)
-    - name: Save upload cache
-      if: ${{ (inputs.mode == 'upload' || inputs.mode == 'all') && steps.run.outputs.cache_key && steps.run.outputs.upload_status == 'uploaded' }}
-      uses: actions/cache/save@v4
-      with:
-        key: ${{ steps.run.outputs.cache_key }}
-        path: action-context
-
-    # Upload result artifacts (upload/all modes only)
-    - name: Upload result artifacts
-      if: ${{ (inputs.mode == 'upload' || inputs.mode == 'all') && steps.run.outputs.result_artifact_name }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.run.outputs.result_artifact_name }}
-        path: |
-          ${{ steps.run.outputs.car_path }}
-          ${{ steps.run.outputs.metadata_path }}
 

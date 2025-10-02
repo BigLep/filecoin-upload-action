@@ -7,6 +7,7 @@ import { createCarFile } from './filecoin.js'
 import { loadContext, mergeAndSaveContext, contextWithCar } from './context.js'
 import { getInput } from './inputs.js'
 import { writeOutputs } from './outputs.js'
+import { uploadBuildArtifact } from './artifacts.js'
 
 /**
  * Read GitHub event payload
@@ -143,6 +144,9 @@ export async function runBuild() {
     ipfs_root_cid: ipfsRootCid,
   })
 
+  // Upload build artifact
+  await uploadBuildArtifact(workspace, artifactName)
+
   // Write outputs for action.yml
   await writeOutputs({
     ipfs_root_cid: ipfsRootCid,
@@ -151,5 +155,5 @@ export async function runBuild() {
     upload_status: 'build-only',
   })
 
-  console.log('✓ Build complete. CAR and metadata saved to action-context/')
+  console.log('✓ Build complete. CAR and metadata saved and uploaded to artifacts')
 }

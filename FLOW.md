@@ -98,8 +98,6 @@ The action follows SOLID principles with clear separation of concerns:
 ### `action.yml` Responsibilities:
 - Set up environment (Node.js, dependencies)
 - Call `run.mjs` once - it orchestrates based on mode
-- Upload artifacts (based on outputs from `run.mjs`)
-- Save/restore cache (based on outputs from `run.mjs`)
 
 ### `run.mjs` Responsibilities (Orchestrator):
 - Read `mode` input and route to appropriate handler
@@ -110,6 +108,7 @@ The action follows SOLID principles with clear separation of concerns:
 - `runBuild()` function: Create CAR, determine artifact name, save context, normalize for upload
 - Handle all build-mode specific logic
 - Manage PR metadata extraction and context updates
+- Upload build artifacts via GitHub API
 
 ### `upload.js` Responsibilities:
 - `runUpload()` function: Detect artifact, download artifact, check for reuse, upload to Filecoin if needed
@@ -118,11 +117,20 @@ The action follows SOLID principles with clear separation of concerns:
 - Manage reuse detection (cache + artifacts)
 - Handle Filecoin upload and payment processing
 - Comment on PR with upload results
+- Save/restore cache via GitHub API
+- Upload result artifacts via GitHub API
 
 ### `comment-pr.js` Responsibilities:
 - `commentOnPR()` function: Post or update PR comments with upload results
 - Handle PR detection from context or GitHub events
 - Manage comment creation and updates
+
+### `artifacts.js` Responsibilities:
+- `uploadBuildArtifact()` function: Upload build artifacts via GitHub API
+- `uploadResultArtifact()` function: Upload result artifacts (CAR + metadata) via GitHub API
+- `saveCache()` function: Save cache via GitHub API
+- `restoreCache()` function: Restore cache via GitHub API
+- Handle all GitHub Actions artifact operations
 
 ### Benefits of This Architecture:
 1. **SOLID principles**: Single responsibility for each module
@@ -155,9 +163,9 @@ The action follows SOLID principles with clear separation of concerns:
    ├─> Saves everything to action-context/context.json
    └─> Outputs: ipfs_root_cid, car_path, artifact_name
 
-4. Upload build artifact
-   └─> Uploads entire action-context/ directory
-   └─> Artifact name determined by run.mjs
+4. Upload build artifact (handled by build.js)
+   └─> Uploads entire action-context/ directory via GitHub API
+   └─> Artifact name determined by build.js
    └─> Contains: CAR file + context.json
 ```
 
@@ -184,26 +192,17 @@ filecoin-build-{id}/
    ├─> Determines artifact name based on workflow_run context
    ├─> Downloads build artifact via GitHub API
    ├─> Extracts artifact to ./action-context/
+   ├─> Restores cache (if available) via GitHub API
    ├─> Loads context from action-context/context.json
    ├─> Checks for reusable uploads (cache or previous artifacts)
    ├─> If reusable: Validates balances and exits
    ├─> If not reusable: Uploads CAR to Filecoin
    ├─> Handles payments (minDays, maxTopUp)
    ├─> Creates result artifacts (CAR + metadata)
-   └─> Outputs: all upload details + cache_key + result_artifact_name
-
-3. Restore cache (if cache_key provided)
-   └─> Used for future reuse detection
-
-4. Save cache (if uploaded successfully)
-   └─> Saves for next run with same content
-
-5. Upload result artifacts
-   ├─> Name: filecoin-pin-{root_cid}
-   └─> For future content deduplication
-
-6. Comment on PR (handled by upload.js)
-   └─> Posts IPFS CID, preview URL, status
+   ├─> Saves cache via GitHub API
+   ├─> Uploads result artifacts via GitHub API
+   ├─> Comments on PR with upload results
+   └─> Outputs: all upload details
 ```
 
 ---

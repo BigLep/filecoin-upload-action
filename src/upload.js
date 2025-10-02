@@ -11,6 +11,7 @@ import { createArtifacts } from './cache.js'
 import { getInput, parseInputs, resolveContentPath } from './inputs.js'
 import { writeOutputs, writeSummary } from './outputs.js'
 import { commentOnPR } from './comment-pr.js'
+import { saveCache, restoreCache, uploadResultArtifact } from './artifacts.js'
 
 const pExecFile = promisify(execFile)
 
@@ -248,6 +249,16 @@ export async function runUpload() {
   const rootCid = ctx.ipfs_root_cid
   console.log(`Root CID from context: ${rootCid}`)
 
+  // Try to restore cache first
+  const ctxDir = join(workspace, 'action-context')
+  const cacheKey = `filecoin-v1-${rootCid}`
+  const cacheRestored = await restoreCache(workspace, cacheKey, ctxDir)
+
+  // If cache restored, reload context
+  if (cacheRestored) {
+    ctx = await loadContext(workspace)
+  }
+
   // Try to reuse previous upload
   const reuse = await prepareReuse(workspace, rootCid)
 
@@ -357,6 +368,13 @@ export async function runUpload() {
     car_path: artifactCarPath,
   })
 
+  // Save cache
+  await saveCache(workspace, cacheKey, ctxDir)
+
+  // Upload result artifact
+  const resultArtifactName = `filecoin-pin-${rootCid}`
+  await uploadResultArtifact(workspace, resultArtifactName, artifactCarPath, metadataPath)
+
   // Write outputs
   await writeOutputs({
     ipfs_root_cid: rootCid,
@@ -367,8 +385,8 @@ export async function runUpload() {
     car_path: artifactCarPath,
     metadata_path: metadataPath,
     upload_status: 'uploaded',
-    cache_key: `filecoin-v1-${rootCid}`,
-    result_artifact_name: `filecoin-pin-${rootCid}`,
+    cache_key: cacheKey,
+    result_artifact_name: resultArtifactName,
   })
 
   console.log('\n━━━ Upload Complete ━━━')
