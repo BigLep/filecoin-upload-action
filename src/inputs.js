@@ -1,6 +1,33 @@
 import { resolve } from 'node:path'
 import { ethers } from 'ethers'
 
+const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key)
+
+let cachedInputsJson
+
+function readInputsJson() {
+  if (cachedInputsJson !== undefined) return cachedInputsJson
+
+  const raw = process.env.INPUTS_JSON
+  if (!raw) {
+    cachedInputsJson = null
+    return cachedInputsJson
+  }
+
+  try {
+    cachedInputsJson = JSON.parse(raw)
+  } catch (error) {
+    throw new Error(`Failed to parse INPUTS_JSON: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  return cachedInputsJson
+}
+
+function toStringValue(value, fallback = '') {
+  if (value === undefined || value === null) return String(fallback ?? '')
+  return typeof value === 'string' ? value : String(value)
+}
+
 /**
  * Get input value from environment variables
  * @param {string} name - Input name
@@ -8,7 +35,17 @@ import { ethers } from 'ethers'
  * @returns {string} Input value
  */
 export function getInput(name, fallback = '') {
-  return (process.env[`INPUT_${name.toUpperCase()}`] ?? fallback).trim()
+  const json = readInputsJson()
+  if (json && own(json, name)) {
+    return toStringValue(json[name], fallback).trim()
+  }
+
+  const envKey = `INPUT_${name.toUpperCase()}`
+  if (process.env[envKey] !== undefined && process.env[envKey] !== null) {
+    return toStringValue(process.env[envKey], fallback).trim()
+  }
+
+  return toStringValue(fallback).trim()
 }
 
 /**

@@ -160,17 +160,11 @@ runs:
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
-        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_WALLETPRIVATEKEY: ${{ inputs.walletPrivateKey }}
-        INPUT_PATH: ${{ inputs.path }}
-        INPUT_MINDAYS: ${{ inputs.minDays }}
-        INPUT_MINBALANCE: ${{ inputs.minBalance }}
-        INPUT_MAXTOPUP: ${{ inputs.maxTopUp }}
-        INPUT_WITHCDN: ${{ inputs.withCDN }}
-        INPUT_TOKEN: ${{ inputs.token }}
-        INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: compute
-      run: node src/run.mjs
+        INPUTS_JSON: ${{ toJson(inputs) }}
+      run: |
+        set -euo pipefail
+        node src/run.mjs
 
     # Auto-generate artifact name based on context
     - name: Set artifact name (build mode)
@@ -297,16 +291,11 @@ runs:
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
-        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_WALLETPRIVATEKEY: ${{ inputs.walletPrivateKey }}
-        INPUT_MINDAYS: ${{ inputs.minDays }}
-        INPUT_MINBALANCE: ${{ inputs.minBalance }}
-        INPUT_MAXTOPUP: ${{ inputs.maxTopUp }}
-        INPUT_WITHCDN: ${{ inputs.withCDN }}
-        INPUT_TOKEN: ${{ inputs.token }}
-        INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         FROM_ARTIFACT: ${{ steps.prepare-reuse.outputs.reuse_source == 'artifact' }}
-      run: node src/run.mjs
+        INPUTS_JSON: ${{ toJson(inputs) }}
+      run: |
+        set -euo pipefail
+        node src/run.mjs
 
     - name: Upload via filecoin-pin
       if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.prepare-reuse.outputs.found != 'true' }}
@@ -314,19 +303,13 @@ runs:
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
-        INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
-        INPUT_WALLETPRIVATEKEY: ${{ inputs.walletPrivateKey }}
-        INPUT_PATH: ${{ inputs.path }}
-        INPUT_MINDAYS: ${{ inputs.minDays }}
-        INPUT_MINBALANCE: ${{ inputs.minBalance }}
-        INPUT_MAXTOPUP: ${{ inputs.maxTopUp }}
-        INPUT_WITHCDN: ${{ inputs.withCDN }}
-        INPUT_TOKEN: ${{ inputs.token }}
-        INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: upload
         PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || steps.context-from-artifact.outputs.context_car_path || './action-context/*.car' }}
         PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid || steps.context-from-artifact.outputs.context_root_cid }}
-      run: node src/run.mjs
+        INPUTS_JSON: ${{ toJson(inputs) }}
+      run: |
+        set -euo pipefail
+        node src/run.mjs
 
     - name: Save action-context to cache
       if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.run.outcome == 'success' }}

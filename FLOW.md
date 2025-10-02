@@ -104,7 +104,7 @@ The action is designed to support **untrusted fork PRs** by separating content b
    └─> Uses cache for faster runs
 
 3. Compute CAR file (step: compute)
-   ├─> Runs: node src/run.mjs (ACTION_PHASE=compute)
+   ├─> Runs: node src/run.mjs (ACTION_PHASE=compute, inputs via JSON blob)
    ├─> Packs content into CAR using filecoin-pin
    ├─> Saves CAR to /tmp/filecoin-pin-add-*.car
    └─> Outputs: ipfs_root_cid, car_path
@@ -178,7 +178,7 @@ filecoin-build-{id}/
    └─> If download FAILS (expired/inaccessible): Fallback to fresh upload
 
 9. [New content or artifact download failed] Upload via filecoin-pin (step: run)
-   ├─> Runs: node src/run.mjs (ACTION_PHASE=upload)
+   ├─> Runs: node src/run.mjs (ACTION_PHASE=upload, inputs via JSON blob)
    ├─> Uses: ./action-context/*.car
    ├─> Root CID: from action-context/context.json
    ├─> Uploads to Filecoin
@@ -404,6 +404,7 @@ These outputs drive cache keys, artifact reuse detection, and PR commenting with
 3. `ACTION_PHASE=from-cache`: Used internally when `context.json` already contains upload metadata (triggered automatically by the runner).
 
 **What it does**:
+- Reads the full composite input set from the JSON blob provided by `action.yml` (stored in `INPUTS_JSON` or passed as argv) so we no longer export individual `INPUT_*` variables per step
 - Calls `filecoin-pin` library
 - Handles Synapse initialization
 - Manages payments/deposits
