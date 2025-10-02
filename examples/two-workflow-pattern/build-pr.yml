@@ -1,9 +1,11 @@
 name: Build PR Content
 
-# Runs on PRs from same-repo only - NO SECRETS
-# NOTE: Fork PR support is currently disabled
+# Runs on both same-repo PRs and fork PRs - NO SECRETS
+# Fork PRs will build but upload will be blocked
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_target:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]  # Also run when PRs are merged to main
@@ -15,8 +17,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # Use PR head SHA if triggered by pull_request, otherwise use default (push event)
+          # For pull_request_target: checkout the PR code (head)
+          # For pull_request: use PR head SHA
+          # For push: use default SHA
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # For pull_request_target, we need to fetch the PR head
+          fetch-depth: 0
 
       # Your build steps here (example)
       - name: Build
