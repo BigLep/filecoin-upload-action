@@ -1,6 +1,7 @@
 name: Upload to Filecoin
 
 # Simple single-workflow pattern - for same-repo PRs only
+# NOTE: Fork PR support is currently disabled anyway
 on:
   pull_request:
     types: [opened, synchronize, reopened]

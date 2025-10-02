@@ -1,6 +1,7 @@
 name: Build PR Content
 
-# Runs on PRs from forks and same-repo - NO SECRETS
+# Runs on PRs from same-repo only - NO SECRETS
+# NOTE: Fork PR support is currently disabled
 on:
   pull_request:
     types: [opened, synchronize, reopened]

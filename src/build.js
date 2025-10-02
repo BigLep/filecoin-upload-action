@@ -72,6 +72,7 @@ async function updateBuildMetadata(workspace, artifactName) {
     event_name: eventName,
   }
 
+  // Handle PR metadata (same-repo PRs only at this point)
   if (event?.pull_request) {
     const pr = event.pull_request
     payload.pr = {
@@ -134,6 +135,19 @@ export async function runBuild() {
 
   console.log('━━━ Build Mode: Creating CAR file ━━━')
 
+  // Check if this is a fork PR first
+  const event = await readEventPayload()
+  if (event?.pull_request) {
+    const pr = event.pull_request
+    const isForkPR = pr.head?.repo?.full_name !== pr.base?.repo?.full_name
+
+    if (isForkPR) {
+      console.log('━━━ Fork PR Detected - Building CAR but Blocking Upload ━━━')
+      console.error('::error::Fork PR support is currently disabled. Only same-repo workflows are supported.')
+      console.log('::notice::Building CAR file but upload will be blocked')
+    }
+  }
+
   // Parse inputs (build mode doesn't need wallet validation)
   const { parseInputs, resolveContentPath } = await import('./inputs.js')
   const inputs = /** @type {ParsedInputs} */ (parseInputs('compute')) // Skip wallet validation for build mode
@@ -154,18 +168,23 @@ export async function runBuild() {
   // Update context with build metadata (PR info, artifact name, etc.)
   await updateBuildMetadata(workspace, artifactName)
 
-  // Add PR metadata annotation if this is a PR
-  const event = await readEventPayload()
+  // Note: PR metadata is saved
   if (event?.pull_request?.number) {
-    console.log(`::notice::Saved PR metadata for PR #${event.pull_request.number}`)
+    console.log(`::notice::PR #${event.pull_request.number} metadata saved`)
   }
 
   // Normalize context: copy CAR into action-context directory
   const normalizedCarPath = await normalizeContextForArtifact(workspace, carPath)
 
+  // Determine upload status based on whether this is a fork PR
+  const isForkPR =
+    event?.pull_request && event.pull_request.head?.repo?.full_name !== event.pull_request.base?.repo?.full_name
+  const uploadStatus = isForkPR ? 'fork-pr-blocked' : 'build-only'
+
   // Update context with CID and CAR info
   await mergeAndSaveContext(workspace, {
     ipfs_root_cid: ipfsRootCid,
+    upload_status: uploadStatus,
   })
 
   // Upload build artifact
@@ -176,7 +195,7 @@ export async function runBuild() {
     ipfs_root_cid: ipfsRootCid,
     car_path: normalizedCarPath,
     artifact_name: artifactName,
-    upload_status: 'build-only',
+    upload_status: uploadStatus,
   })
 
   console.log('✓ Build complete. CAR and metadata saved and uploaded to artifacts')

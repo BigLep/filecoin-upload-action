@@ -4,7 +4,7 @@ Composite GitHub Action that packs a file or directory into a UnixFS CAR, upload
 
 ## Quick Start
 
-The action uses a **secure two-workflow pattern** by default. This works for all PRs (including forks) and keeps your secrets safe.
+The action uses a **secure two-workflow pattern** by default. This currently works for same-repo PRs only (fork PR support temporarily disabled).
 
 **Step 1: Build workflow** (runs on PR, no secrets):
 ```yaml
@@ -95,11 +95,22 @@ Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifac
 
 ## Usage
 
-The action uses a secure two-workflow pattern by default. This works for **all PRs** (including forks) and keeps your secrets safe.
+The action uses a secure two-workflow pattern by default. This currently works for **same-repo PRs only** (fork PR support temporarily disabled).
 
 Split your CI into untrusted build + trusted upload workflows.
 
 **Security Note**: The `workflow_run` trigger always executes the workflow file from your main branch, not from the PR. Even if a PR modifies the upload workflow to change hardcoded limits, those changes won't apply until the PR is merged.
+
+## Current Limitations & Future Plans
+
+**⚠️ Fork PR Support Temporarily Disabled**
+
+- **Current**: Only same-repo PRs and direct pushes to main are supported
+- **PR Commenting**: Still works, but shows different message for fork PRs
+- **Reason**: Limit non-maintainer PR actors from draining funds from unaware repo owners.
+
+**🔄 Planned Restorations:**
+- Fork PR support will be re-enabled in a future version
 
 **See [examples/two-workflow-pattern/](./examples/two-workflow-pattern/)** for complete, ready-to-use workflow files.
 

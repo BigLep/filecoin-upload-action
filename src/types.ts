@@ -104,3 +104,19 @@ export interface ArtifactUploadOptions {
 export interface ArtifactDownloadOptions {
   path: string
 }
+
+export interface PrCommentContext {
+  uploadStatus: string
+  ipfsRootCid: string
+  dataSetId: string
+  pieceCid: string
+  // statusLine: string
+  previewUrl: string
+}
+
+export interface PrCommentTemplate {
+  heading: string
+  sections: ((ctx: PrCommentContext) => string[])[]
+}
+
+export type PrCommentTemplateKeys = 'success' | 'fork-pr-blocked'

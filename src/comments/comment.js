@@ -1,39 +1,47 @@
+import { Octokit } from '@octokit/rest'
+import { loadContext } from '../context.js'
+import { getErrorMessage } from '../errors.js'
+import { getCommentTemplate, renderTemplate } from './templates.js'
+
 /**
- * Comment on PR with Filecoin upload results
- *
- * This script posts or updates a comment on a pull request with the upload results.
- * It requires the following environment variables:
- * - IPFS_ROOT_CID: The root CID of the uploaded content
- * - DATA_SET_ID: The Filecoin dataset ID
- * - PIECE_CID: The piece CID
- * - UPLOAD_STATUS: Status of the upload (uploaded, reused-cache, or reused-artifact)
- * - PR_NUMBER: The PR number to comment on
- * - GITHUB_TOKEN: GitHub token for API access
- * - GITHUB_REPOSITORY: Repository in owner/repo format
+ * @typedef {import('../types.js').PrCommentContext} PrCommentContext
+ * @typedef {import('../types.js').PrCommentTemplateKeys} PrCommentTemplateKeys
  */
 
-import { Octokit } from '@octokit/rest'
-import { loadContext } from './context.js'
-import { getErrorMessage } from './errors.js'
+/**
+ * Generate comment body based on upload status
+ * @param {Pick<CommentPRParams, 'uploadStatus' | 'ipfsRootCid' | 'dataSetId' | 'pieceCid'>} param0
+ * @returns
+ */
+const generateCommentBody = ({ uploadStatus, ipfsRootCid, dataSetId, pieceCid }) => {
+  const template = getCommentTemplate(/** @type {PrCommentTemplateKeys} */ (uploadStatus))
+  const previewUrl = ipfsRootCid ? `https://ipfs.io/ipfs/${ipfsRootCid}` : 'Preview unavailable'
+  /**
+   * @type {PrCommentContext}
+   */
+  const context = {
+    uploadStatus,
+    ipfsRootCid,
+    dataSetId,
+    pieceCid,
+    previewUrl,
+  }
+
+  return renderTemplate(template, context)
+}
 
 // Import types for JSDoc
 /**
- * @typedef {import('./types.js').CommentPRParams} CommentPRParams
+ * @typedef {import('../types.js').CommentPRParams} CommentPRParams
  */
 
 /**
  * Comment on PR with Filecoin upload results
  * @param {CommentPRParams} params
  */
-export async function commentOnPR({
-  ipfsRootCid,
-  dataSetId,
-  pieceCid,
-  uploadStatus,
-  prNumber,
-  githubToken,
-  githubRepository,
-}) {
+export async function commentOnPR(params) {
+  /** @type {CommentPRParams} */
+  let { ipfsRootCid, dataSetId, pieceCid, uploadStatus, prNumber, githubToken, githubRepository } = params
   // Try to get PR number from parameter or context
   /** @type {number | undefined} */
   let resolvedPrNumber = prNumber
@@ -54,6 +62,21 @@ export async function commentOnPR({
     return
   }
 
+  // Check if this is a fork PR that was blocked
+  const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
+  const ctx = await loadContext(workspace)
+
+  // If this is a fork PR that was blocked, we need to comment with explanation
+  if (ctx.pr && ctx.upload_status === 'fork-pr-blocked') {
+    console.log('Posting comment for blocked fork PR')
+    // Override the upload status for the comment
+    uploadStatus = 'fork-pr-blocked'
+    // Set dummy values so the comment function doesn't skip
+    if (!ipfsRootCid) ipfsRootCid = 'N/A (fork PR blocked)'
+    if (!dataSetId) dataSetId = 'N/A (fork PR blocked)'
+    if (!pieceCid) pieceCid = 'N/A (fork PR blocked)'
+  }
+
   const [owner, repo] = githubRepository.split('/')
   const issue_number = resolvedPrNumber
 
@@ -64,26 +87,7 @@ export async function commentOnPR({
 
   const octokit = new Octokit({ auth: githubToken })
 
-  const preview = `https://ipfs.io/ipfs/${ipfsRootCid}`
-  let statusLine = '- Status: '
-  if (uploadStatus === 'uploaded') statusLine += 'Uploaded new content'
-  else if (uploadStatus === 'reused-cache') statusLine += 'Reused cached content'
-  else if (uploadStatus === 'reused-artifact') statusLine += 'Reused artifact content'
-  else statusLine += 'Unknown (see job logs)'
-
-  const body = [
-    '<!-- filecoin-pin-upload-action -->',
-    'Filecoin Pin Upload ✅',
-    '',
-    `- IPFS Root CID: \`${ipfsRootCid}\``,
-    `- Data Set ID: \`${dataSetId}\``,
-    `- Piece CID: \`${pieceCid}\``,
-    '',
-    statusLine,
-    '',
-    '- Preview (temporary centralized gateway):',
-    `  - ${preview}`,
-  ].join('\n')
+  const body = generateCommentBody({ uploadStatus, ipfsRootCid, dataSetId, pieceCid })
 
   try {
     // Find existing comment

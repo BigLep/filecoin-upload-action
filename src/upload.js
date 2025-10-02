@@ -1,13 +1,11 @@
-import { execFile } from 'node:child_process'
 import { access, copyFile, mkdir, readdir, readFile, rm, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 import { Octokit } from '@octokit/rest'
 import pc from 'picocolors'
 import pino from 'pino'
 import { downloadBuildArtifact, restoreCache, saveCache, uploadResultArtifact } from './artifacts.js'
 import { createArtifacts } from './cache.js'
-import { commentOnPR } from './comment-pr.js'
+import { commentOnPR } from './comments/comment.js'
 import { contextWithCar, loadContext, mergeAndSaveContext } from './context.js'
 import { getErrorMessage } from './errors.js'
 import { cleanupSynapse, handlePayments, initializeSynapse, uploadCarToFilecoin } from './filecoin.js'
@@ -20,8 +18,6 @@ import { writeOutputs, writeSummary } from './outputs.js'
  * @typedef {import('./types.js').ParsedInputs} ParsedInputs
  * @typedef {import('./types.js').UploadResult} UploadResult
  */
-
-const _pExecFile = promisify(execFile)
 
 /**
  * Read GitHub event payload
@@ -58,10 +54,11 @@ async function determineArtifactName(eventOverride) {
   const workflowRunPrNumber = event.workflow_run?.pull_requests?.[0]?.number
   const workflowRunId = event.workflow_run?.id
 
+  // WARNING: Fork PR support is currently disabled
   if (workflowRunPrNumber) {
-    const artifactName = `filecoin-build-pr-${workflowRunPrNumber}`
-    console.log(`::notice::Auto-detected artifact name from workflow_run PR: ${artifactName}`)
-    return artifactName
+    console.error('::error::Fork PR support is currently disabled. Only same-repo workflows are supported.')
+    console.log('::notice::Fork PR detected in upload workflow - will attempt to comment on PR')
+    // Continue processing - the build artifact should contain fork-pr-blocked status
   }
   if (workflowRunId) {
     const artifactName = `filecoin-build-${workflowRunId}`
@@ -258,6 +255,44 @@ export async function runUpload() {
   /** @type {Partial<CombinedContext>} */
   let ctx = await loadContext(workspace)
   console.log('[artifact-debug] Loaded context after download:', ctx)
+
+  // Check if this was a fork PR that was blocked
+  if (ctx.upload_status === 'fork-pr-blocked') {
+    console.log('━━━ Fork PR Upload Blocked ━━━')
+    console.log('::notice::Fork PR detected - content built but not uploaded to Filecoin, will comment on PR')
+
+    const rootCid = ctx.ipfs_root_cid || ''
+
+    // Write outputs indicating fork PR was blocked
+    await writeOutputs({
+      ipfs_root_cid: rootCid,
+      data_set_id: '',
+      piece_cid: '',
+      provider_id: '',
+      provider_name: '',
+      car_path: ctx.car_path || '',
+      metadata_path: join(workspace, 'action-context', 'context.json'),
+      upload_status: 'fork-pr-blocked',
+      cache_key: '',
+    })
+
+    await writeSummary(ctx, 'Fork PR blocked')
+
+    // Comment on PR with the actual IPFS Root CID
+    const prNumber = ctx.pr?.number
+    await commentOnPR({
+      ipfsRootCid: rootCid,
+      dataSetId: '',
+      pieceCid: '',
+      uploadStatus: 'fork-pr-blocked',
+      ...(prNumber !== undefined && { prNumber }),
+      githubToken: process.env.GITHUB_TOKEN || getInput('github_token') || '',
+      githubRepository: process.env.GITHUB_REPOSITORY || '',
+    })
+
+    console.log('✓ Fork PR blocked - PR comment posted explaining the limitation')
+    return
+  }
 
   if (!ctx.ipfs_root_cid) {
     throw new Error('No IPFS Root CID found in context. Build artifact may be missing.')
