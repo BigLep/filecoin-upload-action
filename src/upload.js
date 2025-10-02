@@ -54,11 +54,11 @@ async function determineArtifactName(eventOverride) {
   const workflowRunPrNumber = event.workflow_run?.pull_requests?.[0]?.number
   const workflowRunId = event.workflow_run?.id
 
-  // WARNING: Fork PR support is currently disabled
+  // Prioritize PR-based artifact naming when available
   if (workflowRunPrNumber) {
-    console.error('::error::Fork PR support is currently disabled. Only same-repo workflows are supported.')
-    console.log('::notice::Fork PR detected in upload workflow - will attempt to comment on PR')
-    // Continue processing - the build artifact should contain fork-pr-blocked status
+    const artifactName = `filecoin-build-pr-${workflowRunPrNumber}`
+    console.log(`::notice::Auto-detected artifact name from workflow_run PR: ${artifactName}`)
+    return artifactName
   }
   if (workflowRunId) {
     const artifactName = `filecoin-build-${workflowRunId}`
