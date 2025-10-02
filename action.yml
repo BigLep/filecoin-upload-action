@@ -151,7 +151,6 @@ runs:
       uses: actions/github-script@v7
       with:
         script: |
-          const core = require('@actions/core')
           const token = process.env.ACTIONS_RUNTIME_TOKEN
           const resultsUrl = process.env.ACTIONS_RESULTS_URL
           if (!token || !resultsUrl) {
