@@ -1,3 +1,9 @@
+## [1.0.11](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.10...v1.0.11) (2025-10-02)
+
+### Bug Fixes
+
+* same pr comment and output summary ([df89232](https://github.com/SgtPooki/filecoin-upload-action/commit/df892324bc4ec3b4701eae28150f13a1eb8d0a22))
+
 ## [1.0.10](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.9...v1.0.10) (2025-10-02)
 
 ### Bug Fixes
