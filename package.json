@@ -2,7 +2,7 @@
   "name": "filecoin-pin-upload-action-helper",
   "private": true,
   "type": "module",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Helper runner for Filecoin Pin Upload GitHub Action",
   "dependencies": {
     "@actions/artifact": "^2.3.2",
