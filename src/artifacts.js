@@ -3,6 +3,36 @@ import { join } from 'node:path'
 import { DefaultArtifactClient } from '@actions/artifact'
 import { getErrorMessage } from './errors.js'
 
+let runtimeGuardWarned = false
+
+/**
+ * Ensure the GitHub Actions runtime token is available.
+ * The token is only provided when the workflow job declares `permissions: actions: write`.
+ * @param {string} feature - Short description of what we are trying to do (for error messages)
+ * @param {boolean} [fatal=true] - Whether missing token should throw
+ * @returns {boolean} True when the token is available
+ */
+function ensureRuntimeToken(feature, fatal = true) {
+  const token = process.env.ACTIONS_RUNTIME_TOKEN
+  const resultsUrl = process.env.ACTIONS_RESULTS_URL
+  if (token && resultsUrl) return true
+
+  const message =
+    `GitHub did not expose the runtime token required to ${feature}. ` +
+    'Add `permissions: actions: write` to the workflow job that uses sgtpooki/filecoin-upload-action.'
+
+  if (!runtimeGuardWarned) {
+    console.warn(message)
+    runtimeGuardWarned = true
+  }
+
+  if (fatal) {
+    throw new Error(message)
+  }
+
+  return false
+}
+
 /**
  * Upload build artifact using GitHub API
  * @param {string} workspace
@@ -10,6 +40,7 @@ import { getErrorMessage } from './errors.js'
  * @param {number} retentionDays
  */
 export async function uploadBuildArtifact(workspace, artifactName, retentionDays = 1) {
+  ensureRuntimeToken(`upload build artifact ${artifactName}`)
   const artifact = new DefaultArtifactClient()
   const contextDir = join(workspace, 'action-context')
 
@@ -34,6 +65,7 @@ export async function uploadBuildArtifact(workspace, artifactName, retentionDays
  * @param {string} metadataPath
  */
 export async function uploadResultArtifact(workspace, artifactName, carPath, metadataPath) {
+  ensureRuntimeToken(`upload result artifact ${artifactName}`)
   const artifact = new DefaultArtifactClient()
   try {
     const { id: artifactId } = await artifact.uploadArtifact(artifactName, [carPath, metadataPath], workspace, {
@@ -56,6 +88,10 @@ export async function uploadResultArtifact(workspace, artifactName, carPath, met
  */
 export async function saveCache(workspace, cacheKey, contextPath) {
   const artifactName = `cache-${cacheKey}`
+
+  if (!ensureRuntimeToken(`save cache ${artifactName}`, false)) {
+    return
+  }
 
   const artifact = new DefaultArtifactClient()
   try {
@@ -82,6 +118,10 @@ export async function restoreCache(_workspace, cacheKey, contextPath, buildRunId
   const artifactName = `cache-${cacheKey}`
 
   try {
+    if (!ensureRuntimeToken(`restore cache ${artifactName}`, false)) {
+      return false
+    }
+
     const artifact = new DefaultArtifactClient()
 
     // Get repository information
@@ -138,6 +178,7 @@ export async function downloadBuildArtifact(workspace, artifactName, buildRunId)
   try {
     await mkdir(ctxDir, { recursive: true })
 
+    ensureRuntimeToken(`download artifact ${artifactName}`)
     const artifact = new DefaultArtifactClient()
 
     // Get repository information
