@@ -1,3 +1,9 @@
+## [1.0.8](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.7...v1.0.8) (2025-10-02)
+
+### Bug Fixes
+
+* normalize context/metadata usage ([d615cc3](https://github.com/SgtPooki/filecoin-upload-action/commit/d615cc3cffdf0f8d65d8a444022e3f006e71e5ed))
+
 ## [1.0.7](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.6...v1.0.7) (2025-10-02)
 
 ### Bug Fixes
