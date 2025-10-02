@@ -16,11 +16,11 @@ import { writeOutputs } from './outputs.js'
  */
 
 /**
- * Update context with PR and build metadata
+ * Update context with PR and build context
  * @param {string} workspace
  * @param {string} artifactName
  */
-async function updateBuildMetadata(workspace, artifactName) {
+async function updateBuildContext(workspace, artifactName) {
   const buildRunId = process.env.GITHUB_RUN_ID || ''
   const eventName = process.env.GITHUB_EVENT_NAME || ''
   const event = await readEventPayload()
@@ -32,7 +32,7 @@ async function updateBuildMetadata(workspace, artifactName) {
     event_name: eventName,
   }
 
-  // Handle PR metadata (same-repo PRs only at this point)
+  // Handle PR context (same-repo PRs only at this point)
   if (event?.pull_request) {
     const pr = event.pull_request
     payload.pr = {
@@ -125,12 +125,12 @@ export async function runBuild() {
   console.log(`Artifact name: ${artifactName}`)
   console.log(`::notice::Artifact name: ${artifactName}`)
 
-  // Update context with build metadata (PR info, artifact name, etc.)
-  await updateBuildMetadata(workspace, artifactName)
+  // Update context with build context (PR info, artifact name, etc.)
+  await updateBuildContext(workspace, artifactName)
 
-  // Note: PR metadata is saved
+  // Note: PR context is saved
   if (event?.pull_request?.number) {
-    console.log(`::notice::PR #${event.pull_request.number} metadata saved`)
+    console.log(`::notice::PR #${event.pull_request.number} context saved`)
   }
 
   // Normalize context: copy CAR into action-context directory
@@ -158,6 +158,6 @@ export async function runBuild() {
     upload_status: uploadStatus,
   })
 
-  console.log('✓ Build complete. CAR and metadata saved and uploaded to artifacts')
+  console.log('✓ Build complete. CAR and context saved and uploaded to artifacts')
   console.log('::notice::Build mode complete. CAR file created and saved to artifact.')
 }

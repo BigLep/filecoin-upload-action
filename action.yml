@@ -89,9 +89,6 @@ outputs:
   car_path:
     description: Path to the created CAR file
     value: ${{ steps.run.outputs.car_path }}
-  metadata_path:
-    description: Path to JSON with upload metadata
-    value: ${{ steps.run.outputs.metadata_path }}
   upload_status:
     description: Upload status (uploaded, reused-cache, reused-artifact, build-only)
     value: ${{ steps.run.outputs.upload_status }}

@@ -50,7 +50,7 @@ The action is designed to support **untrusted fork PRs** by separating content b
 **What it does**:
 - Packs content into a CAR file (IPFS format)
 - Saves build context (Root CID, PR info, etc.) to `action-context/context.json`
-- Copies the CAR into `action-context/` so metadata + content live together
+- Copies the CAR into `action-context/` so action context + content live together
 - Uploads the `action-context/` directory as a GitHub Actions artifact
 
 **What it outputs**:
@@ -72,7 +72,7 @@ The action is designed to support **untrusted fork PRs** by separating content b
 2. Extracts build context (Root CID, PR number, etc.)
 3. Checks cache/previous uploads for this content
 4. If not cached: Uploads CAR to Filecoin
-5. Saves upload metadata for future reuse
+5. Saves upload action context for future reuse
 6. Comments on PR with results
 
 **Secrets needed**:
@@ -101,13 +101,13 @@ The action follows SOLID principles with clear separation of concerns:
 
 ### `run.mjs` Responsibilities (Orchestrator):
 - Read `mode` input and route to appropriate handler
-- Manage basic context metadata
+- Manage basic action context
 - Handle cleanup on errors
 
 ### `build.js` Responsibilities:
 - `runBuild()` function: Create CAR, determine artifact name, save context, normalize for upload
 - Handle all build-mode specific logic
-- Manage PR metadata extraction and context updates
+- Manage PR action context extraction and context updates
 - Upload build artifacts via GitHub API
 
 ### `upload.js` Responsibilities:
@@ -127,7 +127,7 @@ The action follows SOLID principles with clear separation of concerns:
 
 ### `artifacts.js` Responsibilities:
 - `uploadBuildArtifact()` function: Upload build artifacts via GitHub API
-- `uploadResultArtifact()` function: Upload result artifacts (CAR + metadata) via GitHub API
+- `uploadResultArtifact()` function: Upload result artifacts (CAR + action context) via GitHub API
 - `saveCache()` function: Save cache via GitHub API
 - `restoreCache()` function: Restore cache via GitHub API
 - Handle all GitHub Actions artifact operations

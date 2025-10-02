@@ -12,7 +12,6 @@ import {
   saveCache,
   uploadResultArtifact,
 } from './artifacts.js'
-import { createArtifacts } from './cache.js'
 import { commentOnPR } from './comments/comment.js'
 import { contextWithCar, loadContext, mergeAndSaveContext } from './context.js'
 import { getErrorMessage } from './errors.js'
@@ -101,10 +100,9 @@ async function prepareReuse(workspace, rootCid, buildRunId) {
         // Use the artifacts.js helper to download the artifact
         await downloadBuildArtifact(workspace, targetName, buildRunId)
 
-        // Merge artifact metadata into context
+        // Merge artifact context into context
         const files = await readdir(destDir)
-        const metaName =
-          files.find((f) => f.toLowerCase() === 'upload.json') || files.find((f) => f.toLowerCase() === 'context.json')
+        const metaName = files.find((f) => f.toLowerCase() === 'context.json')
         if (metaName) {
           const srcMeta = join(destDir, metaName)
           const text = await readFile(srcMeta, 'utf8')
@@ -117,7 +115,6 @@ async function prepareReuse(workspace, rootCid, buildRunId) {
             provider: meta.provider,
             network: meta.network,
             preview_url: meta.previewURL,
-            metadata_path: join(ctxDir, 'context.json'),
             upload_status: 'reused-artifact',
           })
         }
@@ -225,7 +222,6 @@ export async function runUpload() {
       provider_id: '',
       provider_name: '',
       car_path: ctx.car_path || '',
-      metadata_path: join(workspace, 'action-context', 'context.json'),
       upload_status: 'fork-pr-blocked',
       cache_key: '',
     })
@@ -282,7 +278,6 @@ export async function runUpload() {
       if (car) resolvedCarPath = join(ctxDir, car)
     }
 
-    const metadataPath = ctx.metadata_path || join(workspace, 'action-context', 'context.json')
     const uploadStatus = reuse.source === 'artifact' ? 'reused-artifact' : 'reused-cache'
 
     await writeOutputs({
@@ -292,7 +287,6 @@ export async function runUpload() {
       provider_id: ctx.provider?.id || '',
       provider_name: ctx.provider?.name || '',
       car_path: resolvedCarPath || '',
-      metadata_path: metadataPath,
       upload_status: uploadStatus,
       cache_key: `filecoin-v1-${rootCid}`,
     })
@@ -381,29 +375,17 @@ export async function runUpload() {
   )
   const { pieceCid, pieceId, dataSetId, provider, previewURL, network } = uploadResult
 
-  // Create metadata
-  const metadata = {
-    network,
-    contentPath: targetPath,
-    ipfsRootCid: rootCid,
-    pieceCid,
-    pieceId,
-    dataSetId,
-    provider,
-    previewURL,
-  }
-
-  const { artifactCarPath, metadataPath } = await createArtifacts(workspace, carPath, metadata)
-
   // Update context
   await mergeAndSaveContext(workspace, {
     piece_cid: pieceCid,
+    piece_id: pieceId,
     data_set_id: dataSetId,
     provider,
     preview_url: previewURL,
+    network,
+    content_path: targetPath,
     upload_status: 'uploaded',
-    metadata_path: metadataPath,
-    car_path: artifactCarPath,
+    car_path: carPath,
     payment_status: {
       depositedAmount: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
       currentBalance: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
@@ -417,7 +399,8 @@ export async function runUpload() {
 
   // Upload result artifact
   const resultArtifactName = `filecoin-pin-${rootCid}`
-  await uploadResultArtifact(workspace, resultArtifactName, artifactCarPath, metadataPath)
+  const contextJsonPath = join(workspace, 'action-context', 'context.json')
+  await uploadResultArtifact(workspace, resultArtifactName, carPath, contextJsonPath)
 
   // Write outputs
   await writeOutputs({
@@ -426,8 +409,7 @@ export async function runUpload() {
     piece_cid: pieceCid,
     provider_id: provider.id || '',
     provider_name: provider.name || '',
-    car_path: artifactCarPath,
-    metadata_path: metadataPath,
+    car_path: carPath,
     upload_status: 'uploaded',
     cache_key: cacheKey,
     result_artifact_name: resultArtifactName,

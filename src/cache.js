@@ -8,41 +8,41 @@ import { getErrorMessage } from './errors.js'
  */
 
 /**
- * Read cached metadata from cache directory
+ * Read cached context from cache directory
  * @param {string} cacheDir - Cache directory path
- * @returns {Promise<CombinedContext>} Cached metadata
+ * @returns {Promise<CombinedContext>} Cached context
  */
-export async function readCachedMetadata(cacheDir) {
+export async function readCachedContext(cacheDir) {
   const metaPath = join(cacheDir, 'context.json')
   const text = await fs.readFile(metaPath, 'utf8')
   return JSON.parse(text)
 }
 
 /**
- * Write metadata to cache directory
+ * Write context to cache directory
  * @param {string} cacheDir - Cache directory path
- * @param {Object} metadata - Metadata to cache
+ * @param {Object} context - Context to cache
  */
-export async function writeCachedMetadata(cacheDir, metadata) {
+export async function writeCachedContext(cacheDir, context) {
   await fs.mkdir(cacheDir, { recursive: true })
   const metaPath = join(cacheDir, 'context.json')
   // Merge if exists
   try {
     const existing = JSON.parse(await fs.readFile(metaPath, 'utf8'))
-    const merged = { ...existing, ...metadata }
+    const merged = { ...existing, ...context }
     await fs.writeFile(metaPath, JSON.stringify(merged, null, 2))
   } catch {
-    await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2))
+    await fs.writeFile(metaPath, JSON.stringify(context, null, 2))
   }
 }
 
 /**
- * Mirror metadata to standard cache location
+ * Mirror context to standard cache location
  * @param {string} workspace - Workspace directory
  * @param {string} ipfsRootCid - Root CID for cache key
- * @param {string} metadataText - Metadata JSON text
+ * @param {string} contextText - Context JSON text
  */
-export async function mirrorToStandardCache(workspace, ipfsRootCid, metadataText) {
+export async function mirrorToStandardCache(workspace, ipfsRootCid, contextText) {
   try {
     const ctxDir = join(workspace, 'action-context')
     await fs.mkdir(ctxDir, { recursive: true })
@@ -55,50 +55,18 @@ export async function mirrorToStandardCache(workspace, ipfsRootCid, metadataText
       // Ignore if file doesn't exist
     }
     /** @type {any} */
-    const meta = JSON.parse(metadataText)
+    const contextData = JSON.parse(contextText)
     // Map common fields
     const mapped = {
-      ipfs_root_cid: meta.ipfsRootCid || existing.ipfs_root_cid || ipfsRootCid,
-      piece_cid: meta.pieceCid || existing.piece_cid,
-      data_set_id: meta.dataSetId || existing.data_set_id,
-      provider: meta.provider || existing.provider,
-      car_path: meta.carPath || existing.car_path,
+      ipfs_root_cid: contextData.ipfsRootCid || existing.ipfs_root_cid || ipfsRootCid,
+      piece_cid: contextData.pieceCid || existing.piece_cid,
+      data_set_id: contextData.dataSetId || existing.data_set_id,
+      provider: contextData.provider || existing.provider,
+      car_path: contextData.carPath || existing.car_path,
     }
     const merged = { ...existing, ...mapped }
     await fs.writeFile(ctxPath, JSON.stringify(merged, null, 2))
   } catch (error) {
-    console.warn('Failed to mirror metadata into action-context/context.json:', getErrorMessage(error))
-  }
-}
-
-/**
- * Create artifact directory and copy files
- * @param {string} workspace - Workspace directory
- * @param {string} carPath - Source CAR file path
- * @param {Object} metadata - Metadata to write
- * @returns {Promise<{artifactDir: string, artifactCarPath: string, metadataPath: string}>} Artifact paths
- */
-export async function createArtifacts(workspace, carPath, metadata) {
-  const artifactDir = join(workspace, 'filecoin-pin-artifacts')
-
-  try {
-    await fs.mkdir(artifactDir, { recursive: true })
-  } catch (error) {
-    console.error('Failed to create artifact directory:', getErrorMessage(error))
-    throw error
-  }
-
-  // Copy CAR to artifact directory with a simple name
-  const artifactCarPath = join(artifactDir, 'upload.car')
-  await fs.copyFile(carPath, artifactCarPath)
-
-  // Write metadata JSON into artifact directory
-  const metadataPath = join(artifactDir, 'upload.json')
-  await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2))
-
-  return {
-    artifactDir,
-    artifactCarPath,
-    metadataPath,
+    console.warn('Failed to mirror context into action-context/context.json:', getErrorMessage(error))
   }
 }

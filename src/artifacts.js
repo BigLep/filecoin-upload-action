@@ -161,17 +161,17 @@ export async function uploadBuildArtifact(workspace, artifactName, retentionDays
 }
 
 /**
- * Upload result artifact (CAR + metadata) using GitHub API
+ * Upload result artifact (CAR + context JSON) using GitHub API
  * @param {string} workspace
  * @param {string} artifactName
  * @param {string} carPath
- * @param {string} metadataPath
+ * @param {string} contextJsonPath
  */
-export async function uploadResultArtifact(workspace, artifactName, carPath, metadataPath) {
+export async function uploadResultArtifact(workspace, artifactName, carPath, contextJsonPath) {
   ensureRuntimeToken(`upload result artifact ${artifactName}`)
   const artifact = new DefaultArtifactClient()
   try {
-    const { id: artifactId } = await artifact.uploadArtifact(artifactName, [carPath, metadataPath], workspace, {
+    const { id: artifactId } = await artifact.uploadArtifact(artifactName, [carPath, contextJsonPath], workspace, {
       retentionDays: 30, // Keep result artifacts longer
       compressionLevel: 6,
     })

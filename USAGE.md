@@ -33,7 +33,7 @@ jobs:
         run: npm run build
 
       # Build mode: compute CAR, no secrets needed
-      # The action automatically saves PR metadata and generates artifact names
+      # The action automatically saves PR context and generates artifact names
       - name: Build CAR file
         uses: sgtpooki/filecoin-upload-action@v1
         with:
@@ -57,7 +57,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      # Upload mode: automatically finds artifacts, downloads metadata, and comments on PR
+      # Upload mode: automatically finds artifacts, downloads context, and comments on PR
       # The action handles everything - just provide secrets and limits!
       - name: Upload to Filecoin
         uses: sgtpooki/filecoin-upload-action@v1
@@ -163,6 +163,5 @@ All modes provide these outputs:
 - `provider_id`: Storage Provider ID
 - `provider_name`: Storage Provider Name
 - `car_path`: Path to CAR file
-- `metadata_path`: Path to metadata JSON
 - `upload_status`: Status (`uploaded`, `reused-cache`, `reused-artifact`, or `build-only`)
 

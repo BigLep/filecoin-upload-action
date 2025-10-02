@@ -16,13 +16,13 @@ export interface CombinedContext {
     author?: string
   }
   piece_cid?: string
+  piece_id?: string
   data_set_id?: string
   provider?: {
     id?: string
     name?: string
   }
   upload_status?: string
-  metadata_path?: string
   run_id?: string
   repository?: string
   mode?: string
