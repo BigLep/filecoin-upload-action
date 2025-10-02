@@ -13,34 +13,46 @@
  */
 
 import { Octokit } from '@octokit/rest'
+import { loadContext } from './context.js'
 
-async function commentOnPR() {
-  const { IPFS_ROOT_CID, DATA_SET_ID, PIECE_CID, UPLOAD_STATUS, PR_NUMBER, GITHUB_TOKEN, GITHUB_REPOSITORY } = process.env
-
-  if (!IPFS_ROOT_CID || !DATA_SET_ID || !PIECE_CID || !PR_NUMBER || !GITHUB_TOKEN || !GITHUB_REPOSITORY) {
-    console.error('Missing required environment variables')
-    process.exit(1)
+export async function commentOnPR({ ipfsRootCid, dataSetId, pieceCid, uploadStatus, prNumber, githubToken, githubRepository }) {
+  // Try to get PR number from parameter or context
+  let resolvedPrNumber = prNumber
+  if (!resolvedPrNumber) {
+    const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
+    const ctx = await loadContext(workspace)
+    resolvedPrNumber = ctx.pr?.number ? String(ctx.pr.number) : null
   }
 
-  const [owner, repo] = GITHUB_REPOSITORY.split('/')
-  const issue_number = parseInt(PR_NUMBER, 10)
+  // Also try from GitHub event
+  if (!resolvedPrNumber && process.env.GITHUB_EVENT_NAME === 'pull_request') {
+    resolvedPrNumber = process.env.GITHUB_EVENT_PULL_REQUEST_NUMBER
+  }
 
-  const octokit = new Octokit({ auth: GITHUB_TOKEN })
+  if (!ipfsRootCid || !dataSetId || !pieceCid || !resolvedPrNumber || !githubToken || !githubRepository) {
+    console.log('Skipping PR comment: missing required information (likely not a PR event)')
+    return
+  }
 
-  const preview = 'https://ipfs.io/ipfs/' + IPFS_ROOT_CID
+  const [owner, repo] = githubRepository.split('/')
+  const issue_number = parseInt(resolvedPrNumber, 10)
+
+  const octokit = new Octokit({ auth: githubToken })
+
+  const preview = 'https://ipfs.io/ipfs/' + ipfsRootCid
   let statusLine = '- Status: '
-  if (UPLOAD_STATUS === 'uploaded') statusLine += 'Uploaded new content'
-  else if (UPLOAD_STATUS === 'reused-cache') statusLine += 'Reused cached content'
-  else if (UPLOAD_STATUS === 'reused-artifact') statusLine += 'Reused artifact content'
+  if (uploadStatus === 'uploaded') statusLine += 'Uploaded new content'
+  else if (uploadStatus === 'reused-cache') statusLine += 'Reused cached content'
+  else if (uploadStatus === 'reused-artifact') statusLine += 'Reused artifact content'
   else statusLine += 'Unknown (see job logs)'
 
   const body = [
     '<!-- filecoin-pin-upload-action -->',
     'Filecoin Pin Upload ✅',
     '',
-    '- IPFS Root CID: `' + IPFS_ROOT_CID + '`',
-    '- Data Set ID: `' + DATA_SET_ID + '`',
-    '- Piece CID: `' + PIECE_CID + '`',
+    '- IPFS Root CID: `' + ipfsRootCid + '`',
+    '- Data Set ID: `' + dataSetId + '`',
+    '- Piece CID: `' + pieceCid + '`',
     '',
     statusLine,
     '',
@@ -83,6 +95,3 @@ async function commentOnPR() {
     process.exit(1)
   }
 }
-
-commentOnPR()
-

@@ -71,39 +71,35 @@ inputs:
 outputs:
   ipfs_root_cid:
     description: IPFS Root CID
-    value: ${{ steps.compute.outputs.ipfs_root_cid || steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid }}
+    value: ${{ steps.run.outputs.ipfs_root_cid }}
   data_set_id:
     description: Synapse Data Set ID
-    value: ${{ steps.run.outputs.data_set_id || steps.from-cache.outputs.data_set_id }}
+    value: ${{ steps.run.outputs.data_set_id }}
   piece_cid:
     description: Filecoin Piece CID
-    value: ${{ steps.run.outputs.piece_cid || steps.from-cache.outputs.piece_cid }}
+    value: ${{ steps.run.outputs.piece_cid }}
   provider_id:
     description: Storage Provider ID
-    value: ${{ steps.run.outputs.provider_id || steps.from-cache.outputs.provider_id }}
+    value: ${{ steps.run.outputs.provider_id }}
   provider_name:
     description: Storage Provider Name
-    value: ${{ steps.run.outputs.provider_name || steps.from-cache.outputs.provider_name }}
+    value: ${{ steps.run.outputs.provider_name }}
   car_path:
     description: Path to the created CAR file
-    value: ${{ steps.compute.outputs.car_path || steps.run.outputs.car_path || steps.from-cache.outputs.car_path }}
+    value: ${{ steps.run.outputs.car_path }}
   metadata_path:
     description: Path to JSON with upload metadata
-    value: ${{ steps.run.outputs.metadata_path || steps.from-cache.outputs.metadata_path }}
+    value: ${{ steps.run.outputs.metadata_path }}
   upload_status:
     description: Upload status (uploaded, reused-cache, reused-artifact, build-only)
-    value: ${{ steps.run.outputs.upload_status || steps.from-cache.outputs.upload_status || (steps.compute.outputs.ipfs_root_cid && 'build-only') }}
+    value: ${{ steps.run.outputs.upload_status }}
+  artifact_name:
+    description: Name of the build artifact (build mode only)
+    value: ${{ steps.run.outputs.artifact_name }}
 
 runs:
   using: "composite"
   steps:
-    # Load combined context at the very start (optional, may be empty)
-    - name: Load combined context
-      id: context
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: node src/context-load.js
-
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
@@ -125,9 +121,7 @@ runs:
       id: action-path
       shell: bash
       run: |
-        # Normalize the action path to avoid ./ issues
         ACTION_PATH="${{ github.action_path }}"
-        # Remove any trailing slashes and resolve
         ACTION_PATH=$(cd "$ACTION_PATH" && pwd)
         echo "path=$ACTION_PATH" >> $GITHUB_OUTPUT
 
@@ -144,8 +138,7 @@ runs:
       if: ${{ steps.npm-cache.outputs.cache-hit != 'true' }}
       shell: bash
       working-directory: ${{ github.action_path }}
-      run: |
-        npm ci --no-audit --no-fund
+      run: npm ci --no-audit --no-fund
 
     - name: Save action dependencies cache
       if: ${{ always() && steps.npm-cache.outputs.cache-hit != 'true' }}
@@ -154,189 +147,49 @@ runs:
         path: ${{ steps.action-path.outputs.path }}/node_modules
         key: ${{ runner.os }}-filecoin-action-deps-${{ steps.lockfile-hash.outputs.hash }}
 
-    - name: Compute root + CAR
-      id: compute
-      if: ${{ inputs.mode == 'all' || inputs.mode == 'build' }}
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        ACTION_PHASE: compute
-        INPUTS_JSON: ${{ toJson(inputs) }}
-      run: |
-        set -euo pipefail
-        node src/run.mjs
-
-    # Auto-generate artifact name based on context
-    - name: Set artifact name (build mode)
-      if: ${{ inputs.mode == 'build' }}
-      id: artifact-name
-      shell: bash
-      run: |
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          ARTIFACT_NAME="filecoin-build-pr-${{ github.event.pull_request.number }}"
-        else
-          ARTIFACT_NAME="filecoin-build-${{ github.run_id }}"
-        fi
-        echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-        echo "::notice::Using artifact name: $ARTIFACT_NAME"
-
-    # Update combined context with artifact metadata (build mode)
-    - name: Update context metadata (build mode)
-      if: ${{ inputs.mode == 'build' }}
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        ARTIFACT_NAME: ${{ steps.artifact-name.outputs.name }}
-      run: node src/update-build-context.js
-
-    # Normalize action-context contents for artifact upload
-    - name: Normalize action context (build mode)
-      if: ${{ inputs.mode == 'build' }}
-      id: normalize-context
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        CAR_PATH: ${{ steps.compute.outputs.car_path }}
-      run: node src/normalize-context.js
-
-    - name: Save build artifacts (build mode only)
-      if: ${{ inputs.mode == 'build' }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.artifact-name.outputs.name }}
-        path: ${{ github.workspace }}/action-context
-        retention-days: 1
-
-    # Build mode complete (just a notice)
-    - name: Build mode complete
-      if: ${{ inputs.mode == 'build' }}
-      shell: bash
-      run: |
-        echo "::notice::Build mode complete. CAR file created and saved to artifact."
-        echo "::notice::IPFS Root CID: ${{ steps.compute.outputs.ipfs_root_cid }}"
-        echo "::notice::Artifact name: ${{ steps.artifact-name.outputs.name }}"
-
-    # Auto-detect artifact name in upload mode
-    - name: Auto-detect artifact name (upload mode)
-      if: ${{ inputs.mode == 'upload' }}
-      id: upload-artifact-name
-      shell: bash
-      run: |
-        # Use manual override if provided (for workflow_dispatch testing)
-        if [ -n "${{ inputs.artifact_name }}" ]; then
-          ARTIFACT_NAME="${{ inputs.artifact_name }}"
-          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-          echo "is_pr=true" >> $GITHUB_OUTPUT  # Assume manual override might be for a PR
-          echo "::notice::Using manually provided artifact name: $ARTIFACT_NAME"
-        elif [ -n "${{ github.event.workflow_run.pull_requests[0].number }}" ]; then
-          # workflow_run with PR
-          ARTIFACT_NAME="filecoin-build-pr-${{ github.event.workflow_run.pull_requests[0].number }}"
-          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-          echo "is_pr=true" >> $GITHUB_OUTPUT
-          echo "::notice::Auto-detected artifact name from workflow_run PR: $ARTIFACT_NAME"
-        elif [ -n "${{ github.event.workflow_run.id }}" ]; then
-          # workflow_run without PR (push to main)
-          ARTIFACT_NAME="filecoin-build-${{ github.event.workflow_run.id }}"
-          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-          echo "is_pr=false" >> $GITHUB_OUTPUT
-          echo "::notice::Auto-detected artifact name from workflow_run: $ARTIFACT_NAME"
-        else
-          # Fallback for manual triggers without override
-          ARTIFACT_NAME="filecoin-build-${{ github.run_id }}"
-          echo "name=$ARTIFACT_NAME" >> $GITHUB_OUTPUT
-          echo "is_pr=false" >> $GITHUB_OUTPUT
-          echo "::warning::No artifact_name provided and no workflow_run context. Using fallback: $ARTIFACT_NAME"
-        fi
-
-    # Download artifact if in upload mode
-    - name: Download build artifact (upload mode)
-      if: ${{ inputs.mode == 'upload' }}
-      uses: actions/download-artifact@v4
-      with:
-        name: ${{ steps.upload-artifact-name.outputs.name }}
-        run-id: ${{ inputs.build_run_id || github.event.workflow_run.id }}
-        github-token: ${{ inputs.github_token || github.token }}
-        path: ./action-context
-
-    # Reload combined context after artifact download
-    - name: Load combined context from artifact (upload mode)
-      if: ${{ inputs.mode == 'upload' }}
-      id: context-from-artifact
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: node src/context-load.js
-
-    - name: Prepare reuse (cache or artifact)
-      id: prepare-reuse
-      if: ${{ inputs.mode == 'all' || inputs.mode == 'upload' }}
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid || steps.context-from-artifact.outputs.context_root_cid || steps.upload-artifact-name.outputs.name }}
-        GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
-      run: node src/prepare-reuse.js
-
-    - name: Restore cache into action-context
-      id: cache-restore
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.prepare-reuse.outputs.found != 'true' }}
-      uses: actions/cache/restore@v4
-      with:
-        key: filecoin-v1-${{ steps.compute.outputs.ipfs_root_cid || steps.context-from-artifact.outputs.context_root_cid || steps.upload-artifact-name.outputs.name }}
-        path: action-context
-
-    # If cache or prepare-reuse found data, use it
-    - name: Use cached metadata
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (steps.cache-restore.outputs.cache-hit == 'true' || steps.prepare-reuse.outputs.found == 'true') }}
-      id: from-cache
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        FROM_ARTIFACT: ${{ steps.prepare-reuse.outputs.reuse_source == 'artifact' }}
-        INPUTS_JSON: ${{ toJson(inputs) }}
-      run: |
-        set -euo pipefail
-        node src/run.mjs
-
-    - name: Upload via filecoin-pin
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.prepare-reuse.outputs.found != 'true' }}
+    # Main execution - run.mjs handles everything based on mode
+    - name: Run action
       id: run
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
-        ACTION_PHASE: upload
-        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || steps.context-from-artifact.outputs.context_car_path || './action-context/*.car' }}
-        PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid || steps.context-from-artifact.outputs.context_root_cid }}
         INPUTS_JSON: ${{ toJson(inputs) }}
-      run: |
-        set -euo pipefail
-        node src/run.mjs
+        GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
+      run: node src/run.mjs
 
-    - name: Save action-context to cache
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && steps.cache-restore.outputs.cache-hit != 'true' && steps.run.outcome == 'success' }}
-      uses: actions/cache/save@v4
-      with:
-        key: filecoin-v1-${{ steps.compute.outputs.ipfs_root_cid || steps.context-from-artifact.outputs.context_root_cid }}
-        path: action-context
-
-    - name: Upload CAR + metadata artifacts
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (steps.run.outputs.car_path || steps.from-cache.outputs.car_path) != '' }}
+    # Upload build artifacts (build mode only)
+    - name: Upload build artifacts
+      if: ${{ inputs.mode == 'build' && steps.run.outputs.artifact_name }}
       uses: actions/upload-artifact@v4
       with:
-        name: filecoin-pin-${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid || steps.compute.outputs.ipfs_root_cid }}
-        path: |
-          ${{ steps.run.outputs.car_path || steps.from-cache.outputs.car_path }}
-          ${{ steps.run.outputs.metadata_path || steps.from-cache.outputs.metadata_path }}
+        name: ${{ steps.run.outputs.artifact_name }}
+        path: ${{ github.workspace }}/action-context
+        retention-days: 1
 
-    - name: Comment on PR with IPFS Root CID
-      if: ${{ (inputs.mode == 'all' || inputs.mode == 'upload') && (github.event_name == 'pull_request' || steps.context-from-artifact.outputs.context_pr_number != '') }}
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: node src/comment-pr.js
-      env:
-        IPFS_ROOT_CID: ${{ steps.run.outputs.ipfs_root_cid || steps.from-cache.outputs.ipfs_root_cid }}
-        DATA_SET_ID: ${{ steps.run.outputs.data_set_id || steps.from-cache.outputs.data_set_id }}
-        PIECE_CID: ${{ steps.run.outputs.piece_cid || steps.from-cache.outputs.piece_cid }}
-        UPLOAD_STATUS: ${{ steps.run.outputs.upload_status || steps.from-cache.outputs.upload_status }}
-        PR_NUMBER: ${{ steps.context-from-artifact.outputs.context_pr_number || github.event.pull_request.number }}
-        GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
+    # Restore cache for reuse (upload/all modes only)
+    - name: Restore upload cache
+      if: ${{ (inputs.mode == 'upload' || inputs.mode == 'all') && steps.run.outputs.cache_key }}
+      id: cache-restore
+      uses: actions/cache/restore@v4
+      with:
+        key: ${{ steps.run.outputs.cache_key }}
+        path: action-context
+
+    # Save cache (upload/all modes only, on successful upload)
+    - name: Save upload cache
+      if: ${{ (inputs.mode == 'upload' || inputs.mode == 'all') && steps.run.outputs.cache_key && steps.run.outputs.upload_status == 'uploaded' }}
+      uses: actions/cache/save@v4
+      with:
+        key: ${{ steps.run.outputs.cache_key }}
+        path: action-context
+
+    # Upload result artifacts (upload/all modes only)
+    - name: Upload result artifacts
+      if: ${{ (inputs.mode == 'upload' || inputs.mode == 'all') && steps.run.outputs.result_artifact_name }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.run.outputs.result_artifact_name }}
+        path: |
+          ${{ steps.run.outputs.car_path }}
+          ${{ steps.run.outputs.metadata_path }}
+

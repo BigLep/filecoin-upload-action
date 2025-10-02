@@ -91,39 +91,74 @@ The action is designed to support **untrusted fork PRs** by separating content b
 
 ---
 
+## Architecture Overview
+
+The action follows SOLID principles with clear separation of concerns:
+
+### `action.yml` Responsibilities:
+- Set up environment (Node.js, dependencies)
+- Call `run.mjs` once - it orchestrates based on mode
+- Upload artifacts (based on outputs from `run.mjs`)
+- Save/restore cache (based on outputs from `run.mjs`)
+
+### `run.mjs` Responsibilities (Orchestrator):
+- Read `mode` input and route to appropriate handler
+- Manage basic context metadata
+- Handle cleanup on errors
+
+### `build.js` Responsibilities:
+- `runBuild()` function: Create CAR, determine artifact name, save context, normalize for upload
+- Handle all build-mode specific logic
+- Manage PR metadata extraction and context updates
+
+### `upload.js` Responsibilities:
+- `runUpload()` function: Detect artifact, download artifact, check for reuse, upload to Filecoin if needed
+- Handle all upload-mode specific logic
+- Manage artifact download via GitHub API
+- Manage reuse detection (cache + artifacts)
+- Handle Filecoin upload and payment processing
+- Comment on PR with upload results
+
+### `comment-pr.js` Responsibilities:
+- `commentOnPR()` function: Post or update PR comments with upload results
+- Handle PR detection from context or GitHub events
+- Manage comment creation and updates
+
+### Benefits of This Architecture:
+1. **SOLID principles**: Single responsibility for each module
+2. **Easier to test**: Each module can be tested independently
+3. **Easier to read**: Clear separation of concerns
+4. **Maintainable**: Changes to build logic don't affect upload logic
+5. **Reusable**: Functions can be imported and used elsewhere
+
+---
+
 ## Build Mode Flow
 
 ### Step-by-step breakdown:
 
 ```
 1. Set up Node.js
-   └─> Ensures we have Node 20+
+   └─> Ensures we have Node 24+
 
 2. Install dependencies
    └─> Installs filecoin-pin and other packages
    └─> Uses cache for faster runs
 
-3. Compute CAR file (step: compute)
-   ├─> Runs: node src/run.mjs (ACTION_PHASE=compute, inputs via JSON blob)
-   ├─> Packs content into CAR using filecoin-pin
-   ├─> Saves CAR to /tmp/filecoin-pin-add-*.car
-   └─> Outputs: ipfs_root_cid, car_path
+3. Run action (run.mjs → build.js)
+   ├─> run.mjs reads mode='build' input
+   ├─> Calls build.js runBuild() function
+   ├─> Creates CAR file from content directory
+   ├─> Determines artifact name based on event (PR or run ID)
+   ├─> Updates context with PR metadata (if applicable)
+   ├─> Normalizes context (copies CAR to action-context/)
+   ├─> Saves everything to action-context/context.json
+   └─> Outputs: ipfs_root_cid, car_path, artifact_name
 
-4. Set artifact name (step: artifact-name)
-   └─> PR: filecoin-build-pr-{number}
-   └─> Push: filecoin-build-{run_id}
-
-5. Update combined context metadata
-   ├─> Runs: node src/update-build-context.js (merges artifact + PR info)
-   └─> Writes to: action-context/context.json (used by future phases)
-
-6. Normalize action context
-   ├─> Copies CAR file into: action-context/
-   ├─> Removes stale CAR files so the directory mirrors the latest build
-   └─> Updates action-context/context.json with the normalized CAR path
-
-7. Upload artifact
-   └─> Uploads the action-context/ directory
+4. Upload build artifact
+   └─> Uploads entire action-context/ directory
+   └─> Artifact name determined by run.mjs
+   └─> Contains: CAR file + context.json
 ```
 
 **Final artifact structure:**
@@ -143,57 +178,32 @@ filecoin-build-{id}/
 1. Set up Node.js + dependencies
    └─> Same as build mode
 
-2. Auto-detect artifact name (step: upload-artifact-name)
-   ├─> From workflow_run PR: filecoin-build-pr-{number}
-   ├─> From workflow_run push: filecoin-build-{run_id}
-   ├─> Manual override: uses input
-   └─> Also sets: is_pr (true/false)
-
-3. Download build artifact
-   ├─> Downloads: filecoin-build-{id}
-   ├─> Extracts to: ./action-context/
-   └─> Now we have: CAR file + context.json available for reuse
-
-4. Load combined context (step: context-from-artifact)
-   ├─> Runs: node src/context-load.js
-   ├─> Reads: action-context/context.json (restored from artifact)
-   └─> Outputs: root CID, car filename, PR metadata, etc.
-
-5. Check cache (step: cache-restore)
-   ├─> Key: filecoin-pin-v1-{root_cid}
-   ├─> If HIT: Skip upload, reuse previous metadata
-   └─> If MISS: Continue to next steps
-
-6. [Cache HIT] Use cached metadata
-   └─> If cache found, we're done! No upload needed.
-
-7. [Cache MISS] Find previous artifact by CID
-   ├─> Searches for: filecoin-pin-{root_cid}
-   ├─> If found: We uploaded this content before
-   └─> If not found: This is new content
-
-8. [Previous artifact found] Download previous artifact
-   ├─> Attempts to download upload metadata from previous run
-   ├─> If download SUCCEEDS: Reuse metadata (no re-upload)
-   └─> If download FAILS (expired/inaccessible): Fallback to fresh upload
-
-9. [New content or artifact download failed] Upload via filecoin-pin (step: run)
-   ├─> Runs: node src/run.mjs (ACTION_PHASE=upload, inputs via JSON blob)
-   ├─> Uses: ./action-context/*.car
-   ├─> Root CID: from action-context/context.json
-   ├─> Uploads to Filecoin
+2. Run action (run.mjs → upload.js)
+   ├─> run.mjs reads mode='upload' input
+   ├─> Calls upload.js runUpload() function
+   ├─> Determines artifact name based on workflow_run context
+   ├─> Downloads build artifact via GitHub API
+   ├─> Extracts artifact to ./action-context/
+   ├─> Loads context from action-context/context.json
+   ├─> Checks for reusable uploads (cache or previous artifacts)
+   ├─> If reusable: Validates balances and exits
+   ├─> If not reusable: Uploads CAR to Filecoin
    ├─> Handles payments (minDays, maxTopUp)
-   └─> Outputs: piece_cid, data_set_id, provider info
+   ├─> Creates result artifacts (CAR + metadata)
+   └─> Outputs: all upload details + cache_key + result_artifact_name
 
-10. Save upload cache
-    └─> Saves metadata for next run
+3. Restore cache (if cache_key provided)
+   └─> Used for future reuse detection
 
-11. Upload CAR + metadata artifacts
-    ├─> Name: filecoin-pin-{root_cid}
-    └─> For future content deduplication
+4. Save cache (if uploaded successfully)
+   └─> Saves for next run with same content
 
-12. Comment on PR
-    └─> Posts IPFS CID, preview URL, etc.
+5. Upload result artifacts
+   ├─> Name: filecoin-pin-{root_cid}
+   └─> For future content deduplication
+
+6. Comment on PR (handled by upload.js)
+   └─> Posts IPFS CID, preview URL, status
 ```
 
 ---
