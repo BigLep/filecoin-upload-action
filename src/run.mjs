@@ -12,16 +12,32 @@ import { cleanupSynapse, createCarFile, handlePayments, initializeSynapse, uploa
 import { parseInputs, resolveContentPath } from './inputs.js'
 import { writeOutputs, writeSummary } from './outputs.js'
 
+async function resolvePhase(workspace) {
+  const explicit = process.env.ACTION_PHASE
+  if (explicit) return explicit
+
+  try {
+    const ctx = await loadContext(workspace)
+    if (ctx?.piece_cid && ctx?.data_set_id) {
+      return 'from-cache'
+    }
+  } catch (error) {
+    console.warn('Failed to inspect existing context to determine phase:', error?.message || error)
+  }
+
+  return 'upload'
+}
+
 async function main() {
-  const phase = process.env.ACTION_PHASE || 'single'
   const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
+
+  // Resolve phase first so we can parse inputs correctly (e.g., compute skips wallet)
+  const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
+  const phase = await resolvePhase(workspace)
 
   // Parse and validate inputs (pass phase to skip wallet validation in compute mode)
   const inputs = parseInputs(phase)
   const { walletPrivateKey, contentPath, minDays, minBalance, maxTopUp, withCDN, token, providerAddress } = inputs
-
-  // Resolve content path (relative to workspace)
-  const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
   const targetPath = resolveContentPath(contentPath)
 
   // Merge minimal run metadata
@@ -75,6 +91,8 @@ async function main() {
 
     const fromArtifact = String(process.env.FROM_ARTIFACT || '').toLowerCase() === 'true'
 
+    const metadataPath = ctx.metadata_path || join(workspace, 'action-context', 'context.json')
+
     await writeOutputs({
       ipfs_root_cid: ctx.ipfs_root_cid || '',
       data_set_id: ctx.data_set_id || '',
@@ -82,7 +100,7 @@ async function main() {
       provider_id: ctx.provider?.id || '',
       provider_name: ctx.provider?.name || '',
       car_path: resolvedCarPath || '',
-      metadata_path: join(workspace, 'action-context', 'context.json'),
+      metadata_path: metadataPath,
       upload_status: fromArtifact ? 'reused-artifact' : 'reused-cache',
     })
 
@@ -101,7 +119,11 @@ async function main() {
 
     // Summary
     const status = fromArtifact ? 'Reused artifact' : 'Reused cache'
-    await writeSummary(ctx, status)
+    await writeSummary({
+      ...ctx,
+      car_path: resolvedCarPath || ctx.car_path || '',
+      metadata_path: metadataPath,
+    }, status)
 
     await mergeAndSaveContext(workspace, { phase: 'from-cache:done' })
     return
@@ -206,8 +228,9 @@ async function main() {
   console.log(`Preview: ${previewURL}`)
   console.log('Status: New upload performed')
 
-  // Write summary
-  await writeSummary({ ...metadata, carPath: artifactCarPath, metadataPath }, 'Uploaded')
+  // Write summary using the latest context
+  const updatedContext = await loadContext(workspace)
+  await writeSummary(updatedContext, 'Uploaded')
 
   await cleanupSynapse()
 }

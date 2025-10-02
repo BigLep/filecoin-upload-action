@@ -23,15 +23,22 @@ export async function writeOutputs(outputs) {
 
 /**
  * Write summary to GitHub Actions step summary
- * @param {Object} data - Summary data
+ * @param {Object} context - Combined context data
  * @param {string} status - Upload status
  */
-export async function writeSummary(data, status) {
+export async function writeSummary(context, status) {
   try {
     const summaryFile = process.env.GITHUB_STEP_SUMMARY
     if (!summaryFile) return
 
-    const { network, ipfsRootCid, dataSetId, pieceCid, provider, previewURL, carPath, metadataPath } = data
+    const network = context?.network || ''
+    const ipfsRootCid = context?.ipfs_root_cid || context?.ipfsRootCid || ''
+    const dataSetId = context?.data_set_id || context?.dataSetId || ''
+    const pieceCid = context?.piece_cid || context?.pieceCid || ''
+    const provider = context?.provider || {}
+    const previewURL = context?.previewURL || context?.preview || ''
+    const carPath = context?.car_path || context?.carPath || ''
+    const metadataPath = context?.metadata_path || context?.metadataPath || ''
 
     const md = [
       '## Filecoin Pin Upload',

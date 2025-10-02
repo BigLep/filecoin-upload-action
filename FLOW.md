@@ -401,7 +401,7 @@ These outputs drive cache keys, artifact reuse detection, and PR commenting with
 **Phases**:
 1. `ACTION_PHASE=compute`: Create CAR file only
 2. `ACTION_PHASE=upload`: Upload to Filecoin
-3. `ACTION_PHASE=from-cache`: Use cached/previous metadata (reads from `CACHE_DIR`, or if missing, `ALT_CACHE_DIR`).
+3. `ACTION_PHASE=from-cache`: Used internally when `context.json` already contains upload metadata (triggered automatically by the runner).
 
 **What it does**:
 - Calls `filecoin-pin` library
@@ -409,7 +409,6 @@ These outputs drive cache keys, artifact reuse detection, and PR commenting with
 - Manages payments/deposits
 - Creates upload metadata
 - Merges every phase's result back into `action-context/context.json` via `mergeAndSaveContext`, so later steps, caches, and artifacts all reference the same JSON
- - In from-cache phase, it tries `upload.json` from `CACHE_DIR` first, then `ALT_CACHE_DIR`. It also derives a `car_path` if not present by scanning the directory for a `.car` file.
 
 ---
 

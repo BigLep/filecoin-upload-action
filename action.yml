@@ -306,7 +306,6 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         FROM_ARTIFACT: ${{ steps.prepare-reuse.outputs.reuse_source == 'artifact' }}
-        ACTION_PHASE: from-cache
       run: node src/run.mjs
 
     - name: Upload via filecoin-pin

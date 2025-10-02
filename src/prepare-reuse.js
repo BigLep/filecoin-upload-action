@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { Octokit } from '@octokit/rest'
-import { mergeAndSaveContext } from './context.js'
+import { mergeAndSaveContext, contextWithCar } from './context.js'
 
 const pExecFile = promisify(execFile)
 
@@ -99,23 +99,38 @@ async function main() {
             piece_cid: meta.pieceCid || ctx.piece_cid,
             data_set_id: meta.dataSetId || ctx.data_set_id,
             provider: meta.provider || ctx.provider,
-            car_path: meta.carPath || ctx.car_path,
+            network: meta.network || ctx.network,
+            previewURL: meta.previewURL || ctx.previewURL,
+            metadata_path: join(ctxDir, 'context.json'),
+            upload_status: 'reused-artifact',
           })
         }
         // Copy a CAR file into action-context/ (if present)
         const carName = files.find((f) => f.toLowerCase().endsWith('.car'))
         if (carName) {
           const srcCar = join(destDir, carName)
-          await fs.copyFile(srcCar, join(ctxDir, carName))
+          const destCar = join(ctxDir, carName)
+          // Remove other CAR files so the context stays in sync
+          try {
+            const existing = await fs.readdir(ctxDir)
+            await Promise.all(
+              existing
+                .filter((name) => name.toLowerCase().endsWith('.car') && name !== carName)
+                .map((name) => fs.unlink(join(ctxDir, name)))
+            )
+          } catch {}
+
+          await fs.copyFile(srcCar, destCar)
+          await mergeAndSaveContext(workspace, {
+            ...contextWithCar(workspace, destCar),
+          })
         }
       } catch {}
 
       // Cleanup temp files
       try { await fs.unlink(zipPath) } catch {}
       try {
-        const entries = await fs.readdir(destDir)
-        await Promise.all(entries.map((e) => fs.rm(join(destDir, e), { recursive: true, force: true })))
-        await fs.rmdir(destDir, { recursive: true })
+        await fs.rm(destDir, { recursive: true, force: true })
       } catch {}
 
       outputs.found = 'true'
@@ -139,5 +154,3 @@ main().catch((err) => {
   console.error('prepare-reuse failed:', err?.message || err)
   process.exit(1)
 })
-
-
