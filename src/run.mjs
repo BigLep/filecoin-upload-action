@@ -119,7 +119,7 @@ async function main() {
 
   // Prepare CAR and root
   let carPath = preparedCarPath
-  // If a glob-like path was provided (e.g., ./filecoin-build-context/*.car), resolve it
+  // If a glob-like path was provided (e.g., ./action-context/*.car), resolve it
   if (carPath && carPath.includes('*')) {
     try {
       const lastSlash = carPath.lastIndexOf('/')

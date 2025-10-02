@@ -195,38 +195,22 @@ runs:
         ARTIFACT_NAME: ${{ steps.artifact-name.outputs.name }}
       run: node src/update-build-context.js
 
-    # Copy CAR file into context directory for artifact upload
-    - name: Prepare artifact contents (build mode)
+    # Normalize action-context contents for artifact upload
+    - name: Normalize action context (build mode)
       if: ${{ inputs.mode == 'build' }}
+      id: normalize-context
       shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p filecoin-build-context
-        if [ -f "${{ steps.compute.outputs.car_path }}" ]; then
-          cp "${{ steps.compute.outputs.car_path }}" filecoin-build-context/
-          echo "Copied CAR file to context directory"
-        else
-          echo "ERROR: CAR file not found at ${{ steps.compute.outputs.car_path }}"
-          exit 1
-        fi
-
-        if [ -f "$GITHUB_WORKSPACE/action-context/context.json" ]; then
-          cp "$GITHUB_WORKSPACE/action-context/context.json" filecoin-build-context/context.json
-          cp "$GITHUB_WORKSPACE/action-context/context.json" filecoin-build-context/build-context.json
-          echo "Copied combined context into artifact payload"
-        else
-          echo "::warning::No combined context found; skipping context copy"
-        fi
-
-        echo "Artifact contents:"
-        ls -la filecoin-build-context/
+      working-directory: ${{ github.action_path }}
+      env:
+        CAR_PATH: ${{ steps.compute.outputs.car_path }}
+      run: node src/normalize-context.js
 
     - name: Save build artifacts (build mode only)
       if: ${{ inputs.mode == 'build' }}
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.artifact-name.outputs.name }}
-        path: filecoin-build-context
+        path: ${{ github.workspace }}/action-context
         retention-days: 1
 
     # Build mode complete (just a notice)
@@ -341,7 +325,7 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_PROVIDERADDRESS: ${{ inputs.providerAddress }}
         ACTION_PHASE: upload
-        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || (steps.context-from-artifact.outputs.context_car_filename && format('./action-context/{0}', steps.context-from-artifact.outputs.context_car_filename)) || './action-context/*.car' }}
+        PREPARED_CAR_PATH: ${{ steps.compute.outputs.car_path || steps.context-from-artifact.outputs.context_car_path || './action-context/*.car' }}
         PREPARED_ROOT_CID: ${{ steps.compute.outputs.ipfs_root_cid || steps.context-from-artifact.outputs.context_root_cid }}
       run: node src/run.mjs
 

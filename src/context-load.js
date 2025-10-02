@@ -18,7 +18,6 @@ async function main() {
     const candidates = []
     if (carPath) candidates.push(carPath)
     candidates.push(join(workspace, 'action-context', carFilename))
-    candidates.push(join(workspace, 'filecoin-build-context', carFilename))
 
     for (const candidate of candidates) {
       if (!candidate) continue

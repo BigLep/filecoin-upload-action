@@ -49,13 +49,13 @@ The action is designed to support **untrusted fork PRs** by separating content b
 
 **What it does**:
 - Packs content into a CAR file (IPFS format)
-- Saves build context (Root CID, PR info, etc.) to JSON
-- Copies CAR + context into `filecoin-build-context/` directory
-- Uploads this directory as a GitHub Actions artifact
+- Saves build context (Root CID, PR info, etc.) to `action-context/context.json`
+- Copies the CAR into `action-context/` so metadata + content live together
+- Uploads the `action-context/` directory as a GitHub Actions artifact
 
 **What it outputs**:
 - Artifact: `filecoin-build-{run_id}` or `filecoin-build-pr-{pr_number}`
-- Contains: CAR file + `build-context.json`
+- Contains: CAR file + `context.json`
 
 **Secrets needed**: None ✅
 
@@ -117,21 +117,20 @@ The action is designed to support **untrusted fork PRs** by separating content b
    ├─> Runs: node src/update-build-context.js (merges artifact + PR info)
    └─> Writes to: action-context/context.json (used by future phases)
 
-6. Prepare artifact contents
-   ├─> Copies CAR file to: filecoin-build-context/
-   ├─> Copies action-context/context.json into artifact (also as build-context.json)
-   └─> Directory now has: context.json + build-context.json + *.car
+6. Normalize action context
+   ├─> Copies CAR file into: action-context/
+   ├─> Removes stale CAR files so the directory mirrors the latest build
+   └─> Updates action-context/context.json with the normalized CAR path
 
 7. Upload artifact
-   └─> Uploads entire filecoin-build-context/ directory
+   └─> Uploads the action-context/ directory
 ```
 
 **Final artifact structure:**
 ```
 filecoin-build-{id}/
   ├── context.json
-  ├── build-context.json
-  └── filecoin-pin-add-*.car
+  └── <car filename>.car
 ```
 
 ---
@@ -180,8 +179,8 @@ filecoin-build-{id}/
 
 9. [New content or artifact download failed] Upload via filecoin-pin (step: run)
    ├─> Runs: node src/run.mjs (ACTION_PHASE=upload)
-   ├─> Uses: ./filecoin-build-context/*.car
-   ├─> Root CID: from build-context
+   ├─> Uses: ./action-context/*.car
+   ├─> Root CID: from action-context/context.json
    ├─> Uploads to Filecoin
    ├─> Handles payments (minDays, maxTopUp)
    └─> Outputs: piece_cid, data_set_id, provider info
@@ -212,7 +211,7 @@ We use **TWO types of artifacts** for different purposes:
 **Lifetime**: Short (1 day retention)
 **Contains**:
 - CAR file (the actual content)
-- `build-context.json` (metadata about the build)
+- `context.json` (combined build metadata)
 
 **Naming**:
 - PR builds: `filecoin-build-pr-123`
