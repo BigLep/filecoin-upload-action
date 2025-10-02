@@ -67,7 +67,7 @@ jobs:
 | --- | --- | --- | --- |
 | `minDays` | | `10` | Minimum runway (days) to keep current spend alive |
 | `maxTopUp` | | — | Maximum additional deposit (USDFC) allowed in this run. **Strongly recommended for security** |
-| `minBalance` | | — | Minimum USDFC balance to keep deposited |
+| `maxBalance` | | — | Maximum USDFC balance allowed (prevents deposits exceeding this value) |
 
 ### Optional/Advanced
 

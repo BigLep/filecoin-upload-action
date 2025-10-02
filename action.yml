@@ -29,9 +29,11 @@ inputs:
       SECURITY: When using two-workflow pattern, hardcode this in the upload workflow, not the build workflow.
     required: false
     default: "10"
-  minBalance:
+  maxBalance:
     description: >-
-      Minimum deposit balance to maintain in Filecoin Pay (USDFC).
+      Maximum deposit balance allowed in Filecoin Pay (USDFC).
+      Prevents deposits that would result in total balance exceeding this value.
+      It's strongly recommended to set this to cap your overall spend.
       Only used in 'all' and 'upload' modes.
       SECURITY: When using two-workflow pattern, hardcode this in the upload workflow.
     required: false

@@ -216,7 +216,7 @@ export async function runUpload() {
   // Parse inputs (upload mode needs wallet)
   /** @type {ParsedInputs} */
   const inputs = parseInputs('upload')
-  const { walletPrivateKey, contentPath, minDays, minBalance, maxTopUp, withCDN, providerAddress } = inputs
+  const { walletPrivateKey, contentPath, minDays, maxBalance, maxTopUp, withCDN, providerAddress } = inputs
   const targetPath = resolveContentPath(contentPath)
 
   const event = await readEventPayload()
@@ -347,7 +347,7 @@ export async function runUpload() {
     try {
       if (walletPrivateKey) {
         const synapse = await initializeSynapse(walletPrivateKey, logger)
-        await handlePayments(synapse, { minDays, minBalance, ...(maxTopUp !== undefined && { maxTopUp }) }, logger)
+        await handlePayments(synapse, { minDays, maxBalance, ...(maxTopUp !== undefined && { maxTopUp }) }, logger)
       }
     } catch (error) {
       console.warn('Balance validation failed:', getErrorMessage(error))
@@ -400,7 +400,7 @@ export async function runUpload() {
     throw new Error('walletPrivateKey is required for upload mode')
   }
   const synapse = await initializeSynapse(walletPrivateKey, logger)
-  await handlePayments(synapse, { minDays, minBalance, ...(maxTopUp !== undefined && { maxTopUp }) }, logger)
+  await handlePayments(synapse, { minDays, maxBalance, ...(maxTopUp !== undefined && { maxTopUp }) }, logger)
 
   const uploadResult = /** @type {UploadResult} */ (
     await uploadCarToFilecoin(synapse, carPath, rootCid, { withCDN, providerAddress }, logger)

@@ -20,6 +20,8 @@ export class FilecoinPinError extends Error {
  */
 export const ERROR_CODES = {
   INSUFFICIENT_FUNDS: 'INSUFFICIENT_FUNDS',
+  MAX_BALANCE_EXCEEDED: 'MAX_BALANCE_EXCEEDED',
+  MAX_BALANCE_REACHED: 'MAX_BALANCE_REACHED',
   PROVIDER_UNAVAILABLE: 'PROVIDER_UNAVAILABLE',
   INVALID_PRIVATE_KEY: 'INVALID_PRIVATE_KEY',
   INVALID_INPUT: 'INVALID_INPUT',
@@ -54,6 +56,10 @@ export function handleError(error, context = {}) {
   if ('code' in error) {
     if (error.code === ERROR_CODES.INSUFFICIENT_FUNDS) {
       console.error('💡 Tip: Check your wallet balance and ensure you have enough USDFC tokens.')
+    } else if (error.code === ERROR_CODES.MAX_BALANCE_EXCEEDED) {
+      console.error('💡 Tip: Reduce maxTopUp or increase maxBalance to allow larger deposits.')
+    } else if (error.code === ERROR_CODES.MAX_BALANCE_REACHED) {
+      console.error('💡 Tip: Current balance is at maxBalance limit. Upload will proceed without additional deposits.')
     } else if (error.code === ERROR_CODES.PROVIDER_UNAVAILABLE) {
       console.error('💡 Tip: Try again later or specify a different provider address.')
     } else if (error.code === ERROR_CODES.INVALID_PRIVATE_KEY) {

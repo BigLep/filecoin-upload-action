@@ -87,7 +87,7 @@ export function parseInputs(phase = 'single') {
   const walletPrivateKey = getInput('walletPrivateKey')
   const contentPath = getInput('path', 'dist')
   const minDaysRaw = getInput('minDays', '10')
-  const minBalanceRaw = getInput('minBalance', '')
+  const maxBalanceRaw = getInput('maxBalance', '')
   const maxTopUpRaw = getInput('maxTopUp', '')
   const withCDN = parseBoolean(getInput('withCDN', 'false'))
   const token = getInput('token', 'USDFC')
@@ -103,7 +103,7 @@ export function parseInputs(phase = 'single') {
   let minDays = Number(minDaysRaw)
   if (!Number.isFinite(minDays) || minDays < 0) minDays = 0
 
-  const minBalance = minBalanceRaw ? ethers.parseUnits(minBalanceRaw, 18) : 0n
+  const maxBalance = maxBalanceRaw ? ethers.parseUnits(maxBalanceRaw, 18) : undefined
   const maxTopUp = maxTopUpRaw ? ethers.parseUnits(maxTopUpRaw, 18) : undefined
 
   // Validate token selection (currently USDFC only)
@@ -115,7 +115,7 @@ export function parseInputs(phase = 'single') {
     walletPrivateKey,
     contentPath,
     minDays,
-    minBalance,
+    maxBalance,
     withCDN,
     token,
     providerAddress,
