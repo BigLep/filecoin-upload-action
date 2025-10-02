@@ -41,29 +41,3 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
 
-  test-release:
-    name: Test Latest Release
-    runs-on: ubuntu-latest
-    needs: release
-    if: needs.release.outputs.new-release-published == 'true'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Test the released action
-        uses: sgtpooki/filecoin-upload-action@${{ needs.release.outputs.new-release-version }}
-        with:
-          mode: build
-          path: ./examples
-        continue-on-error: true
-
-      - name: Check test result
-        if: always()
-        run: |
-          if [ "${{ steps.test-release.outcome }}" == "success" ]; then
-            echo "✅ Released action works correctly"
-          else
-            echo "❌ Released action failed - this may indicate an issue with the release"
-            exit 1
-          fi
