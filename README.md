@@ -68,25 +68,25 @@ jobs:
 ### Core Configuration
 
 | Name | Required | Default | Description |
-| --- | --- | --- | --- |
+|------|----------|---------|-------------|
 | `path` | ✅ | — | Directory or file to package as a CAR |
-| `walletPrivateKey` | ✅* | — | Wallet private key. *Required when the action uploads to Filecoin |
-| `network` | ✅ | — | Filecoin network to use. Must be `mainnet` or `calibration` |
+| `walletPrivateKey` | ✅ | — | Wallet private key |
+| `network` | ✅ | — | Filecoin network: `mainnet` or `calibration` |
 
 ### Financial Controls
 
 | Name | Required | Default | Description |
-| --- | --- | --- | --- |
-| `minStorageDays` | | — | Minimum funding runway (days) to maintain in Filecoin Pay |
-| `filecoinPayBalanceLimit` | ⚠️* | — | Maximum Filecoin Pay balance (USDFC) this action will allow. *Required if `minStorageDays` is set |
+|------|----------|---------|-------------|
+| `minStorageDays` | false | `0` | Minimum funding runway (days). Defaults to 0 (no deposits) |
+| `filecoinPayBalanceLimit` | ⚠️* | — | Max Filecoin Pay balance (USDFC). *Required if `minStorageDays` is set |
 
 ### Optional/Advanced
 
 | Name | Required | Default | Description |
-| --- | --- | --- | --- |
-| `providerAddress` | | `0xa3971…` | Override storage provider address |
-| `token` | | `USDFC` | Payment token. Currently only USDFC is supported |
-| `withCDN` | | `false` | Request CDN in the storage context |
+|------|----------|---------|-------------|
+| `providerAddress` | false | `0xa3971…` | Override storage provider address |
+| `token` | false | `USDFC` | Payment token (USDFC only) |
+| `withCDN` | false | `false` | Request CDN in storage context |
 
 Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifact paths, and upload status (`uploaded`, `reused-cache`, `reused-artifact`, or `build-only`).
 
