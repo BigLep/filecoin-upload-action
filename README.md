@@ -65,30 +65,7 @@ jobs:
 
 ## Inputs
 
-### Core Configuration
-
-| Name | Required | Default | Description |
-|------|----------|---------|-------------|
-| `path` | ✅ | — | Directory or file to package as a CAR |
-| `walletPrivateKey` | ✅ | — | Wallet private key |
-| `network` | ✅ | — | Filecoin network: `mainnet` or `calibration` |
-
-### Financial Controls
-
-| Name | Required | Default | Description |
-|------|----------|---------|-------------|
-| `minStorageDays` | false | `0` | Minimum funding runway (days). Defaults to 0 (no deposits) |
-| `filecoinPayBalanceLimit` | ⚠️* | — | Max Filecoin Pay balance (USDFC). *Required if `minStorageDays` is set |
-
-### Optional/Advanced
-
-| Name | Required | Default | Description |
-|------|----------|---------|-------------|
-| `providerAddress` | false | `0xa3971…` | Override storage provider address |
-| `token` | false | `USDFC` | Payment token (USDFC only) |
-| `withCDN` | false | `false` | Request CDN in storage context |
-
-Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifact paths, and upload status (`uploaded`, `reused-cache`, `reused-artifact`, or `build-only`).
+See [action.yml](./action.yml) the input parameters and their descriptions.
 
 ## Security & Permissions Checklist
 

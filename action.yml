@@ -10,8 +10,8 @@ inputs:
     description: Path to content to upload (file or directory). Typically your build output directory.
     required: true
   walletPrivateKey:
-    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet). Required when uploading.
-    required: false
+    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet).
+    required: true
   network:
     description: What Filecoin network to use. Should either be "mainnet" or "calibration".
     required: true
@@ -20,14 +20,22 @@ inputs:
   minStorageDays:
     description: >-
       Minimum runway in days of funding to keep the current data set persisted on Filecoin.
-      If this is not specified, the action will not make Filecoin Pay deposits.
-      Only used when uploading. SECURITY: Hardcode this in trusted workflows.
+      This number is used to calculate the minimum Filecoin Pay balance to meet this runway.  
+      This calculation assumes that all of the Filecoin Pay balance will go towards storage for this data set,
+      which won't be true for wallets that have multiple data sets or are using Filecoin Pay with other Filecoin Onchain Cloud services.
+      If this isn't specified, this action will not make any Filecoin Pay deposits.
+      If the current Filecoin Pay balance is already above this target, then no token deposits are attempted from the wallet.
+      If the current Filecoin Pay balance is below this target, the necessary deposit will be attempted if through the `filecoinPayBalanceLimit` (see below).
+      If there are insufficient funds in the wallet, the action will fail.
+      SECURITY: Hardcode this in trusted workflows.
     required: false
   filecoinPayBalanceLimit:
     description: >-
-      Maximum Filecoin Pay balance (USDFC) this action will allow after deposits.
-      Required if `minStorageDays` is set. Prevents this action from topping up beyond the limit.
-      Only used when uploading. SECURITY: Hardcode this in trusted workflows.
+      Specifies a target Filecoin Pin balance in USDFC that this action will never exceed.  
+      Actions (manual or other) outside of this action may cause the Filecoin Pay balance to exceed this limit, 
+      but this limit prevents the action from using thewallet to top up the Filecoin Pay balance beyond the limit.
+      As a protection, this must be set if `minStorageDays` is set.
+      SECURITY: Hardcode this in trusted workflows.
     required: false
 
   # Optional/Advanced configuration
@@ -35,10 +43,6 @@ inputs:
     description: Optional override for storage provider address (on Calibration/Mainnet). Defaults to a known good provider on Calibration.
     required: false
     default: "0xa3971A7234a3379A1813d9867B531e7EeB20ae07"
-  token:
-    description: Payment token identifier. Currently only "USDFC" is supported; address override reserved for future.
-    required: false
-    default: "USDFC"
   withCDN:
     description: "If true, request CDN in the storage context (depends on provider capabilities). Warning: filecoin-pin does not calculate deposits and run-rate costs properly with CDN enabled."
     required: false
