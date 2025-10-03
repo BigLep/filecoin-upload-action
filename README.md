@@ -4,7 +4,7 @@ Composite GitHub Action that packs a file or directory into a UnixFS CAR, upload
 
 ## Quick Start
 
-Run your build in an untrusted workflow, publish the build output as an artifact, then run this action in a trusted workflow to create the CAR and upload to Filecoin. Fork PR support is still disabled, so workflows must run within the same repository.
+Run your build in an untrusted workflow, publish the build output as an artifact, then run this action in a trusted workflow to create the CAR and upload to Filecoin. Fork PR support is currently disabled, so workflows must run within the same repository.
 
 **Step 1: Build workflow** (no secrets):
 ```yaml
@@ -109,16 +109,13 @@ Split your CI into untrusted build + trusted upload workflows.
 
 **Security Note**: The `workflow_run` trigger always executes the workflow file from your main branch, not from the PR. Even if a PR modifies the upload workflow to change hardcoded limits, those changes won't apply until the PR is merged.
 
-## Current Limitations & Future Plans
+## Current Limitations
 
-**⚠️ Fork PR Support Temporarily Disabled**
+**⚠️ Fork PR Support Disabled**
 
-- **Current**: Only same-repo PRs and direct pushes to main are supported
-- **PR Commenting**: Still works, but shows different message for fork PRs
-- **Reason**: Limit non-maintainer PR actors from draining funds from unaware repo owners.
-
-**🔄 Planned Restorations:**
-- Fork PR support will be re-enabled in a future version
+- Only same-repo PRs and direct pushes to main are supported
+- PR commenting works, but shows different message for fork PRs
+- This limits non-maintainer PR actors from draining funds from unaware repo owners
 
 **See [examples/two-workflow-pattern/](./examples/two-workflow-pattern/)** for complete, ready-to-use workflow files.
 
@@ -154,4 +151,4 @@ Releases are automatically created when changes are pushed to `main` with conven
 
 - Cache key: `filecoin-pin-v1-${ipfs_root_cid}` enables reuse for identical content.
 - Artifacts: `filecoin-pin-artifacts/upload.car` and `filecoin-pin-artifacts/context.json` are published for each run.
-- PR comments (optional) include the IPFS root CID, dataset ID, piece CID, and preview link.
+- PR comments include the IPFS root CID, dataset ID, piece CID, and preview link.
