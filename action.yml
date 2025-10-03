@@ -20,7 +20,7 @@ inputs:
   minStorageDays:
     description: >-
       Minimum runway in days of funding to keep the current data set persisted on Filecoin.
-      This number is used to calculate the minimum Filecoin Pay balance to meet this runway.  
+      This number is used to calculate the minimum Filecoin Pay balance to meet this runway.
       This calculation assumes that all of the Filecoin Pay balance will go towards storage for this data set,
       which won't be true for wallets that have multiple data sets or are using Filecoin Pay with other Filecoin Onchain Cloud services.
       If this isn't specified, this action will not make any Filecoin Pay deposits.
@@ -31,8 +31,8 @@ inputs:
     required: false
   filecoinPayBalanceLimit:
     description: >-
-      Specifies a target Filecoin Pin balance in USDFC that this action will never exceed.  
-      Actions (manual or other) outside of this action may cause the Filecoin Pay balance to exceed this limit, 
+      Specifies a target Filecoin Pin balance in USDFC that this action will never exceed.
+      Actions (manual or other) outside of this action may cause the Filecoin Pay balance to exceed this limit,
       but this limit prevents the action from using thewallet to top up the Filecoin Pay balance beyond the limit.
       As a protection, this must be set if `minStorageDays` is set.
       SECURITY: Hardcode this in trusted workflows.
