@@ -1,3 +1,9 @@
+## [1.0.14](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.13...v1.0.14) (2025-10-03)
+
+### Bug Fixes
+
+* better inputs ([03fcf68](https://github.com/SgtPooki/filecoin-upload-action/commit/03fcf68b8de3a93b0516ee579ebbd3074632014f))
+
 ## [1.0.13](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.12...v1.0.13) (2025-10-03)
 
 ### Bug Fixes
