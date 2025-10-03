@@ -1,3 +1,10 @@
+## [1.0.13](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.12...v1.0.13) (2025-10-03)
+
+### Bug Fixes
+
+* set fork-pr-blocked in build when recognized ([8590080](https://github.com/SgtPooki/filecoin-upload-action/commit/8590080c98d54b109b1b3c216e3f31803bebf57f))
+* workflow_run can find PRs ([a070540](https://github.com/SgtPooki/filecoin-upload-action/commit/a070540d344e981f8f3ddb95f8e49460b5f8a227))
+
 ## [1.0.12](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.11...v1.0.12) (2025-10-03)
 
 ### Bug Fixes
