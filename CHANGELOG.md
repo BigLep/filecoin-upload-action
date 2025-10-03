@@ -1,3 +1,9 @@
+## [1.0.12](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.11...v1.0.12) (2025-10-03)
+
+### Bug Fixes
+
+* users control build artifacts ([33ae400](https://github.com/SgtPooki/filecoin-upload-action/commit/33ae400764008632babf134a32d27a0574134b2a))
+
 ## [1.0.11](https://github.com/SgtPooki/filecoin-upload-action/compare/v1.0.10...v1.0.11) (2025-10-02)
 
 ### Bug Fixes
