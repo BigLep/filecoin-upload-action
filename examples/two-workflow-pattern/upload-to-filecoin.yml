@@ -8,15 +8,6 @@ on:
     types:
       - completed
   workflow_dispatch:  # Allow manual testing
-    inputs:
-      artifact_name:
-        description: 'Artifact name (e.g., filecoin-build-pr-822)'
-        required: false
-        type: string
-      build_run_id:
-        description: 'Build workflow run ID (find it in the build workflow URL)'
-        required: false
-        type: string
 
 jobs:
   upload:
@@ -29,14 +20,22 @@ jobs:
       pull-requests: write  # Required to comment on PRs
 
     steps:
-      # Upload to Filecoin using UPLOAD mode
-      # The action automatically finds artifacts, downloads metadata, modifies Filecoin Onchain Cloud deposit, and handles commenting
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Download the build artifacts from the build workflow
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-pr-${{ github.event.pull_request.number || github.run_number }}
+          path: dist
+
+      # Upload to Filecoin using the downloaded build artifacts
+      # The action will create a CAR file from the downloaded artifacts and upload to Filecoin
       - name: Upload to Filecoin
         uses: sgtpooki/filecoin-upload-action@v1
         with:
-          mode: upload
-          artifact_name: ${{ inputs.artifact_name }} # Allow manual override for testing
-          build_run_id: ${{ inputs.build_run_id }}   # Build workflow run ID for manual testing
+          path: dist  # Path to the downloaded build artifacts
           walletPrivateKey: ${{ secrets.WALLET_PRIVATE_KEY }}
           minDays: "30"  # Ensure 30 days of funding; Hardcoded - not from PR!
           maxTopUp: "0.10" # 10 cents, or 0.10 USDFC; Hardcoded limit - not from PR!

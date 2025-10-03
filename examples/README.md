@@ -32,8 +32,8 @@ examples/
 4. Adjust hardcoded `minDays` and `maxTopUp` in `upload-to-filecoin.yml` to your needs
 
 **That's it!** The action automatically handles:
-- ✅ Saving PR metadata during build
-- ✅ Retrieving PR metadata during upload
+- ✅ Building CAR files from your build artifacts
+- ✅ Uploading to Filecoin with proper security
 - ✅ Commenting on the PR with results
 
 **Security:** ✅ Fork PRs can build but never access secrets. Financial parameters are hardcoded in the trusted workflow.
@@ -51,7 +51,6 @@ examples/
 1. Copy `single-workflow/upload.yml` to `.github/workflows/` in your repo
 2. Set `WALLET_PRIVATE_KEY` secret in your repository settings
 3. Update the build steps to match your project
-4. **Important**: The example includes `mode: all` to explicitly opt into this pattern
 
 **Security:** ⚠️ Do not use this pattern if you accept fork PRs. Same-repo PRs can modify workflow files before merging.
 

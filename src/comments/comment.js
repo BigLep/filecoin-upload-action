@@ -1,5 +1,5 @@
 import { Octokit } from '@octokit/rest'
-import { loadContext } from '../context.js'
+import { getGlobalContext } from '../context.js'
 import { getErrorMessage } from '../errors.js'
 import { getInput } from '../inputs.js'
 import { getOutputSummary } from '../outputs.js'
@@ -48,8 +48,7 @@ export async function commentOnPR(ctx) {
   /** @type {number | undefined} */
   let resolvedPrNumber = pr?.number
   if (!resolvedPrNumber) {
-    const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
-    const ctx = await loadContext(workspace)
+    const ctx = getGlobalContext()
     resolvedPrNumber = ctx.pr?.number || undefined
   }
 
@@ -63,9 +62,6 @@ export async function commentOnPR(ctx) {
     console.log('Skipping PR comment: missing required information (likely not a PR event)')
     return
   }
-
-  // Check if this is a fork PR that was blocked
-  // const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
 
   // If this is a fork PR that was blocked, we need to comment with explanation
   if (ctx.pr && ctx.upload_status === 'fork-pr-blocked') {

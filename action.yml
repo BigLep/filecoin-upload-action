@@ -6,17 +6,12 @@ branding:
 
 inputs:
   # Core configuration
-  mode:
-    description: "Action mode: 'build' (default, secure - compute CAR only, no secrets needed), 'upload' (upload from artifact, requires secrets), or 'all' (single-workflow, less secure for PRs)"
-    required: false
-    default: build
   path:
-    description: Path to content to upload (file or directory). Typically your build output directory. Required for 'all' and 'build' modes.
-    required: false
-    default: dist
+    description: Path to content to upload (file or directory). Typically your build output directory.
+    required: true
   walletPrivateKey:
-    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet). Required for 'all' and 'upload' modes, not needed for 'build' mode.
-    required: false
+    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet).
+    required: true
 
   # Financial controls
   minDays:
@@ -25,8 +20,6 @@ inputs:
       This ensures at least this much funds have been deposited to Filecoin Warm Storage.
       If there isn't, the necessary deposit will be attempted.
       If there are insufficient funds in the wallet, the action will fail.
-      Only used in 'all' and 'upload' modes.
-      SECURITY: When using two-workflow pattern, hardcode this in the upload workflow, not the build workflow.
     required: false
     default: "10"
   maxBalance:
@@ -34,15 +27,11 @@ inputs:
       Maximum deposit balance allowed in Filecoin Pay (USDFC).
       Prevents deposits that would result in total balance exceeding this value.
       It's strongly recommended to set this to cap your overall spend.
-      Only used in 'all' and 'upload' modes.
-      SECURITY: When using two-workflow pattern, hardcode this in the upload workflow.
     required: false
   maxTopUp:
     description: >-
       Maximum allowed additional deposit during this run (USDFC).
       Strongly recommended to cap PR spend.
-      Only used in 'all' and 'upload' modes.
-      SECURITY: When using two-workflow pattern, hardcode this in the upload workflow.
     required: false
 
   # Optional/Advanced configuration
@@ -62,13 +51,6 @@ inputs:
     required: false
     default: "false"
 
-  # Debugging/Testing only
-  artifact_name:
-    description: "Optional: Override artifact name for manual testing (e.g., with workflow_dispatch). Leave empty for auto-detection from workflow_run context."
-    required: false
-  build_run_id:
-    description: "Optional: Build workflow run ID for manual testing. Only needed with workflow_dispatch - automatically detected from workflow_run context otherwise."
-    required: false
 
 outputs:
   ipfs_root_cid:
@@ -90,11 +72,8 @@ outputs:
     description: Path to the created CAR file
     value: ${{ steps.run.outputs.car_path }}
   upload_status:
-    description: Upload status (uploaded, reused-cache, reused-artifact, build-only)
+    description: Upload status (uploaded, reused-cache, reused-artifact)
     value: ${{ steps.run.outputs.upload_status }}
-  artifact_name:
-    description: Name of the build artifact (build mode only)
-    value: ${{ steps.run.outputs.artifact_name }}
 
 runs:
   using: "composite"

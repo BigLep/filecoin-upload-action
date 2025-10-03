@@ -33,11 +33,11 @@ jobs:
           mkdir -p dist
           echo "Built content" > dist/index.html
 
-      # Use the action in BUILD mode (default, no secrets needed)
-      # The action automatically saves PR metadata and generates artifact names
-      - name: Build CAR file
-        id: build
-        uses: sgtpooki/filecoin-upload-action@v1
+      # Upload your build artifacts to GitHub Actions artifacts
+      # The upload workflow will download these artifacts and use them
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          # mode: build is the default, but can be specified explicitly
+          name: build-artifacts-pr-${{ github.event.pull_request.number || github.run_number }}
           path: dist
+          retention-days: 1

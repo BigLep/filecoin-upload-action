@@ -1,12 +1,9 @@
-import { constants as fsConstants } from 'node:fs'
-import { access, copyFile, mkdir, readdir, unlink } from 'node:fs/promises'
-import { basename, join } from 'node:path'
 import pc from 'picocolors'
 import pino from 'pino'
-import { determineArtifactName, readEventPayload, uploadBuildArtifact } from './artifacts.js'
-import { contextWithCar, mergeAndSaveContext } from './context.js'
+import { mergeAndSaveContext } from './context.js'
 import { createCarFile } from './filecoin.js'
-import { formatSize, writeOutputs } from './outputs.js'
+import { readEventPayload } from './github.js'
+import { formatSize } from './outputs.js'
 
 // Import types for JSDoc
 /**
@@ -17,22 +14,19 @@ import { formatSize, writeOutputs } from './outputs.js'
 
 /**
  * Update context with PR and build context
- * @param {string} workspace
- * @param {string} artifactName
  */
-async function updateBuildContext(workspace, artifactName) {
+async function updateBuildContext() {
   const buildRunId = process.env.GITHUB_RUN_ID || ''
   const eventName = process.env.GITHUB_EVENT_NAME || ''
   const event = await readEventPayload()
 
   /** @type {Partial<CombinedContext>} */
   const payload = {
-    artifact_name: artifactName,
     build_run_id: buildRunId,
     event_name: eventName,
   }
 
-  // Handle PR context (same-repo PRs only at this point)
+  // Handle PR context
   if (event?.pull_request) {
     const pr = event.pull_request
     payload.pr = {
@@ -43,57 +37,16 @@ async function updateBuildContext(workspace, artifactName) {
     }
   }
 
-  await mergeAndSaveContext(workspace, payload)
+  await mergeAndSaveContext(payload)
 }
 
 /**
- * Normalize context for artifact upload (copy CAR into action-context)
- * @param {string} workspace
- * @param {string} carPath
- */
-async function normalizeContextForArtifact(workspace, carPath) {
-  if (!carPath) {
-    throw new Error('CAR path is required for normalization')
-  }
-
-  try {
-    await access(carPath, fsConstants.F_OK)
-  } catch {
-    throw new Error(`CAR file not found at ${carPath}`)
-  }
-
-  const contextDir = join(workspace, 'action-context')
-  await mkdir(contextDir, { recursive: true })
-
-  const carName = basename(carPath)
-  const destination = join(contextDir, carName)
-
-  // Remove existing CAR files to keep context clean
-  try {
-    const entries = await readdir(contextDir)
-    await Promise.all(
-      entries
-        .filter((name) => name.toLowerCase().endsWith('.car') && name !== carName)
-        .map((name) => unlink(join(contextDir, name)))
-    )
-  } catch {
-    // Ignore cleanup errors
-  }
-
-  await copyFile(carPath, destination)
-  await mergeAndSaveContext(workspace, contextWithCar(workspace, destination))
-
-  return destination
-}
-
-/**
- * Run build mode: Create CAR file, determine artifact name, save context
+ * Run build phase: Create CAR file and store in context
  */
 export async function runBuild() {
   const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
-  const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
 
-  console.log('━━━ Build Mode: Creating CAR file ━━━')
+  console.log('━━━ Build Phase: Creating CAR file ━━━')
 
   // Check if this is a fork PR first
   const event = await readEventPayload()
@@ -108,9 +61,8 @@ export async function runBuild() {
     }
   }
 
-  // Parse inputs (build mode doesn't need wallet validation)
   const { parseInputs, resolveContentPath } = await import('./inputs.js')
-  const inputs = /** @type {ParsedInputs} */ (parseInputs('compute')) // Skip wallet validation for build mode
+  const inputs = /** @type {ParsedInputs} */ (parseInputs('compute'))
   const { contentPath } = inputs
   const targetPath = resolveContentPath(contentPath)
 
@@ -125,45 +77,27 @@ export async function runBuild() {
     console.log(`::notice::CAR file size: ${formatSize(carSize)}`)
   }
 
-  // Determine artifact name
-  const artifactName = await determineArtifactName()
-  console.log(`Artifact name: ${artifactName}`)
-  console.log(`::notice::Artifact name: ${artifactName}`)
-
-  // Update context with build context (PR info, artifact name, etc.)
-  await updateBuildContext(workspace, artifactName)
+  // Update context with build context (PR info, etc.)
+  await updateBuildContext()
 
   // Note: PR context is saved
   if (event?.pull_request?.number) {
     console.log(`::notice::PR #${event.pull_request.number} context saved`)
   }
 
-  // Normalize context: copy CAR into action-context directory
-  const normalizedCarPath = await normalizeContextForArtifact(workspace, carPath)
-
   // Determine upload status based on whether this is a fork PR
   const isForkPR =
     event?.pull_request && event.pull_request.head?.repo?.full_name !== event.pull_request.base?.repo?.full_name
-  const uploadStatus = isForkPR ? 'fork-pr-blocked' : 'build-only'
+  const uploadStatus = isForkPR ? 'fork-pr-blocked' : 'pending-upload'
 
   // Update context with CID and CAR info
-  await mergeAndSaveContext(workspace, {
+  await mergeAndSaveContext({
     ipfs_root_cid: ipfsRootCid,
     car_size: carSize,
+    car_path: carPath,
     upload_status: uploadStatus,
   })
 
-  // Upload build artifact
-  await uploadBuildArtifact(workspace, artifactName)
-
-  // Write outputs for action.yml
-  await writeOutputs({
-    ipfs_root_cid: ipfsRootCid,
-    car_path: normalizedCarPath,
-    artifact_name: artifactName,
-    upload_status: uploadStatus,
-  })
-
-  console.log('✓ Build complete. CAR and context saved and uploaded to artifacts')
-  console.log('::notice::Build mode complete. CAR file created and saved to artifact.')
+  console.log('✓ Build complete. CAR file created and stored in context')
+  console.log('::notice::Build phase complete. CAR file created.')
 }

@@ -1,22 +1,10 @@
-import { access, copyFile, mkdir, readdir, readFile, rm, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
-import { Octokit } from '@octokit/rest'
+import { access } from 'node:fs/promises'
 import { ethers } from 'ethers'
 import { getPaymentStatus } from 'filecoin-pin/dist/synapse/payments.js'
 import pc from 'picocolors'
 import pino from 'pino'
-import {
-  determineArtifactName,
-  downloadBuildArtifact,
-  readEventPayload,
-  restoreCache,
-  saveCache,
-  uploadCarArtifact,
-  uploadResultArtifact,
-} from './artifacts.js'
 import { commentOnPR } from './comments/comment.js'
-import { contextWithCar, loadContext, mergeAndSaveContext } from './context.js'
-import { getErrorMessage } from './errors.js'
+import { getGlobalContext, mergeAndSaveContext } from './context.js'
 import {
   calculateStorageRunway,
   cleanupSynapse,
@@ -24,7 +12,7 @@ import {
   initializeSynapse,
   uploadCarToFilecoin,
 } from './filecoin.js'
-import { getInput, parseInputs, resolveContentPath } from './inputs.js'
+import { parseInputs } from './inputs.js'
 import { writeOutputs, writeSummary } from './outputs.js'
 
 // Import types for JSDoc
@@ -35,185 +23,22 @@ import { writeOutputs, writeSummary } from './outputs.js'
  */
 
 /**
- * Resolve the originating build workflow run ID
- * @param {any} event - GitHub event payload
- */
-function resolveBuildRunId(event) {
-  const override = getInput('build_run_id')
-  if (override) return override
-
-  const envRunId = process.env.GITHUB_EVENT_WORKFLOW_RUN_ID
-  if (envRunId) return envRunId
-
-  const workflowRunId = event?.workflow_run?.id ?? event?.workflow_run?.run_id ?? event?.workflow_run?.original_run_id
-  if (workflowRunId) return String(workflowRunId)
-
-  console.warn('Unable to determine the originating build workflow run ID. Using empty string.')
-
-  return ''
-}
-
-/**
- * Try to reuse previous upload by checking artifacts or cache
- * @param {string} workspace
- * @param {string} rootCid
- * @param {string} buildRunId
- */
-async function prepareReuse(workspace, rootCid, buildRunId) {
-  if (!rootCid) {
-    return { found: false, source: null }
-  }
-
-  const token = process.env.GITHUB_TOKEN || getInput('github_token')
-  const repoFull = process.env.GITHUB_REPOSITORY
-  const ctxDir = join(workspace, 'action-context')
-  const ctxPath = join(ctxDir, 'context.json')
-
-  // Check if context already has cached data
-  try {
-    const text = await readFile(ctxPath, 'utf8')
-    const ctx = JSON.parse(text)
-    if (ctx.piece_cid && ctx.data_set_id && ctx.ipfs_root_cid === rootCid) {
-      console.log('Found reusable data in existing context')
-      return { found: true, source: 'context' }
-    }
-  } catch {
-    // Ignore if context file doesn't exist
-  }
-
-  // Try to download prior artifact by CID
-  if (token && repoFull) {
-    const [owner, repo] = repoFull.split('/')
-    if (!owner || !repo) {
-      console.warn('Invalid repository format:', repoFull)
-      return { found: false, source: null }
-    }
-    const octokit = new Octokit({ auth: token })
-    const targetName = `filecoin-pin-${rootCid}`
-
-    try {
-      const artifacts = await octokit.paginate(octokit.rest.actions.listArtifactsForRepo, {
-        owner,
-        repo,
-        per_page: 100,
-      })
-
-      const found = artifacts.find((a) => a.name === targetName && !a.expired)
-
-      if (found) {
-        console.log(`Found reusable artifact: ${targetName}`)
-        const destDir = join(ctxDir, 'artifact.tmp')
-        await mkdir(destDir, { recursive: true })
-
-        // Use the artifacts.js helper to download the artifact
-        await downloadBuildArtifact(workspace, targetName, buildRunId)
-
-        // Merge artifact context into context
-        const files = await readdir(destDir)
-        const metaName = files.find((f) => f.toLowerCase() === 'context.json')
-        if (metaName) {
-          const srcMeta = join(destDir, metaName)
-          const text = await readFile(srcMeta, 'utf8')
-          const meta = JSON.parse(text)
-
-          await mergeAndSaveContext(workspace, {
-            ipfs_root_cid: meta.ipfsRootCid || rootCid,
-            piece_cid: meta.pieceCid,
-            data_set_id: meta.dataSetId,
-            provider: meta.provider,
-            network: meta.network,
-            preview_url: meta.previewURL,
-            upload_status: 'reused-artifact',
-          })
-        }
-
-        // Copy CAR file
-        const carName = files.find((f) => f.toLowerCase().endsWith('.car'))
-        if (carName) {
-          const srcCar = join(destDir, carName)
-          const destCar = join(ctxDir, carName)
-          // Remove other CAR files
-          try {
-            const existing = await readdir(ctxDir)
-            await Promise.all(
-              existing
-                .filter((name) => name.toLowerCase().endsWith('.car') && name !== carName)
-                .map((name) => unlink(join(ctxDir, name)))
-            )
-          } catch {
-            // Ignore cleanup errors
-          }
-          await copyFile(srcCar, destCar)
-          await mergeAndSaveContext(workspace, contextWithCar(workspace, destCar))
-        }
-
-        // Cleanup temp files
-        try {
-          await rm(destDir, { recursive: true, force: true })
-        } catch {
-          // Ignore cleanup errors
-        }
-
-        return { found: true, source: 'artifact' }
-      }
-    } catch (error) {
-      console.warn('Failed to check for reusable artifacts:', getErrorMessage(error))
-    }
-  }
-
-  return { found: false, source: null }
-}
-
-/**
- * Run upload mode: Download artifact, check reuse, upload to Filecoin if needed
+ * Run upload phase: Upload to Filecoin using context data from build phase
  */
 export async function runUpload() {
   const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
-  const workspace = process.env.GITHUB_WORKSPACE || process.cwd()
 
-  console.log('━━━ Upload Mode: Uploading to Filecoin ━━━')
+  console.log('━━━ Upload Phase: Uploading to Filecoin ━━━')
 
-  // Parse inputs (upload mode needs wallet)
+  // Parse inputs (upload phase needs wallet)
   /** @type {ParsedInputs} */
   const inputs = parseInputs('upload')
   const { walletPrivateKey, contentPath, minDays, maxBalance, maxTopUp, withCDN, providerAddress } = inputs
-  const targetPath = resolveContentPath(contentPath)
 
-  const event = await readEventPayload()
-
-  // Determine which artifact to download and download it
-  const buildRunId = resolveBuildRunId(event)
-  const artifactName = await determineArtifactName(event, buildRunId)
-  console.log(`Looking for artifact: ${artifactName}`)
-
-  if (!buildRunId) {
-    throw new Error(
-      'Unable to determine the originating build workflow run ID. ' +
-        'Ensure this upload workflow is triggered by workflow_run or pass build_run_id explicitly when running manually.'
-    )
-  }
-
-  // Download the build artifact
-  await downloadBuildArtifact(workspace, artifactName, buildRunId)
-
-  // Context should now be loaded from downloaded artifact
-  const ctxDir = join(workspace, 'action-context')
-  try {
-    const entries = await readdir(ctxDir)
-    console.log('[artifact-debug] action-context directory entries:', entries)
-  } catch (error) {
-    console.warn('[artifact-debug] Failed to read action-context directory:', getErrorMessage(error))
-  }
-  try {
-    const rawContext = await readFile(join(ctxDir, 'context.json'), 'utf8')
-    console.log(`[artifact-debug] action-context/context.json raw contents: ${rawContext}`)
-  } catch (error) {
-    console.warn('[artifact-debug] Unable to read action-context/context.json:', getErrorMessage(error))
-  }
-
+  // Get context from build phase
   /** @type {Partial<CombinedContext>} */
-  let ctx = await loadContext(workspace)
-  console.log('[artifact-debug] Loaded context after download:', ctx)
+  let ctx = getGlobalContext()
+  console.log('[context-debug] Loaded context from build phase:', ctx)
 
   // Check if this was a fork PR that was blocked
   if (ctx.upload_status === 'fork-pr-blocked') {
@@ -231,7 +56,6 @@ export async function runUpload() {
       provider_name: '',
       car_path: ctx.car_path || '',
       upload_status: 'fork-pr-blocked',
-      cache_key: '',
     })
 
     await writeSummary(ctx, 'Fork PR blocked')
@@ -244,122 +68,28 @@ export async function runUpload() {
   }
 
   if (!ctx.ipfs_root_cid) {
-    throw new Error('No IPFS Root CID found in context. Build artifact may be missing.')
+    throw new Error('No IPFS Root CID found in context. Build phase may have failed.')
   }
 
   const rootCid = ctx.ipfs_root_cid
   console.log(`Root CID from context: ${rootCid}`)
 
-  // Try to restore cache first
-  const cacheKey = `filecoin-v1-${rootCid}`
-  const cacheRestored = await restoreCache(workspace, cacheKey, buildRunId)
-
-  // If cache restored, reload context
-  if (cacheRestored) {
-    /** @type {Partial<CombinedContext>} */
-    ctx = await loadContext(workspace)
-    console.log('[artifact-debug] Loaded context after cache restore:', ctx)
+  // Get CAR file path from context
+  const carPath = ctx.car_path
+  if (!carPath) {
+    throw new Error('No CAR file path found in context. Build phase may have failed.')
   }
 
-  // Try to reuse previous upload
-  const reuse = await prepareReuse(workspace, rootCid, buildRunId)
-
-  if (reuse.found) {
-    // Reload context after reuse preparation
-    ctx = await loadContext(workspace)
-
-    // Determine CAR path
-    let resolvedCarPath = ctx.car_path
-    if (!resolvedCarPath) {
-      const ctxDir = join(workspace, 'action-context')
-      const files = await readdir(ctxDir)
-      const car = files.find((f) => f.toLowerCase().endsWith('.car'))
-      if (car) resolvedCarPath = join(ctxDir, car)
-    }
-
-    const uploadStatus = reuse.source === 'artifact' ? 'reused-artifact' : 'reused-cache'
-
-    await writeOutputs({
-      ipfs_root_cid: ctx.ipfs_root_cid || '',
-      data_set_id: ctx.data_set_id || '',
-      piece_cid: ctx.piece_cid || '',
-      provider_id: ctx.provider?.id || '',
-      provider_name: ctx.provider?.name || '',
-      car_path: resolvedCarPath || '',
-      upload_status: uploadStatus,
-      cache_key: `filecoin-v1-${rootCid}`,
-    })
-
-    // Ensure balances are correct even when reusing
-    let paymentStatus = null
-    let initialPaymentStatus = null
-    try {
-      if (walletPrivateKey) {
-        const synapse = await initializeSynapse(walletPrivateKey, logger)
-        initialPaymentStatus = await getPaymentStatus(synapse)
-        paymentStatus = await handlePayments(synapse, { minDays, maxBalance, maxTopUp }, logger)
-      }
-    } catch (error) {
-      console.warn('Balance validation failed:', getErrorMessage(error))
-    } finally {
-      await cleanupSynapse()
-    }
-
-    // Update context with payment status if available
-    if (paymentStatus) {
-      // Calculate the amount deposited in this run
-      const initialBalance = initialPaymentStatus?.depositedAmount || 0n
-      const finalBalance = paymentStatus?.depositedAmount || 0n
-      const depositedThisRun = finalBalance - initialBalance
-
-      await mergeAndSaveContext(workspace, {
-        payment_status: {
-          depositedAmount: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
-          currentBalance: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
-          storageRunway: calculateStorageRunway(paymentStatus),
-          depositedThisRun: ethers.formatUnits(depositedThisRun, 18),
-        },
-      })
-      // Reload context after payment status update
-      ctx = await loadContext(workspace)
-    } else {
-      console.warn('No payment status found')
-    }
-
-    await writeSummary(ctx, uploadStatus === 'reused-artifact' ? 'Reused artifact' : 'Reused cache')
-
-    // Comment on PR
-    await commentOnPR(ctx)
-
-    console.log(`✓ ${uploadStatus === 'reused-artifact' ? 'Reused previous artifact' : 'Reused cached upload'}`)
-    console.log(`::notice::${uploadStatus === 'reused-artifact' ? 'Reused previous artifact' : 'Reused cached upload'}`)
-    return
-  }
-
-  // No reuse found - perform fresh upload
-  console.log('No reusable upload found. Performing fresh upload...')
-  console.log('::notice::No reusable upload found. Performing fresh upload...')
-
-  // Find CAR file in context
-  let carPath = ctx.car_path
-  if (
-    !carPath ||
-    !(await access(carPath)
-      .then(() => true)
-      .catch(() => false))
-  ) {
-    const ctxDir = join(workspace, 'action-context')
-    const files = await readdir(ctxDir)
-    const carFile = files.find((f) => f.toLowerCase().endsWith('.car'))
-    if (!carFile) {
-      throw new Error('No CAR file found in action-context')
-    }
-    carPath = join(ctxDir, carFile)
+  // Verify CAR file exists
+  try {
+    await access(carPath)
+  } catch {
+    throw new Error(`CAR file not found at ${carPath}`)
   }
 
   // Initialize Synapse and upload
   if (!walletPrivateKey) {
-    throw new Error('walletPrivateKey is required for upload mode')
+    throw new Error('walletPrivateKey is required for upload phase')
   }
   const synapse = await initializeSynapse(walletPrivateKey, logger)
 
@@ -378,38 +108,21 @@ export async function runUpload() {
   const depositedThisRun = finalBalance - initialBalance
 
   // Update context
-  await mergeAndSaveContext(workspace, {
+  await mergeAndSaveContext({
     piece_cid: pieceCid,
     piece_id: pieceId,
     data_set_id: dataSetId,
     provider,
     preview_url: previewURL,
     network,
-    content_path: targetPath,
+    content_path: contentPath,
     upload_status: 'uploaded',
-    car_path: carPath,
     payment_status: {
       depositedAmount: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
       currentBalance: paymentStatus?.depositedAmount ? ethers.formatUnits(paymentStatus.depositedAmount, 18) : '0',
       storageRunway: calculateStorageRunway(paymentStatus),
       depositedThisRun: ethers.formatUnits(depositedThisRun, 18),
     },
-  })
-
-  // Save cache
-  await saveCache(workspace, cacheKey, ctxDir)
-
-  // Upload CAR file as artifact and get download URL
-  const carDownloadUrl = await uploadCarArtifact(workspace, carPath, rootCid)
-
-  // Upload result artifact
-  const resultArtifactName = `filecoin-pin-${rootCid}`
-  const contextJsonPath = join(workspace, 'action-context', 'context.json')
-  await uploadResultArtifact(workspace, resultArtifactName, carPath, contextJsonPath)
-
-  // Update context with CAR download URL
-  await mergeAndSaveContext(workspace, {
-    car_download_url: carDownloadUrl,
   })
 
   // Write outputs
@@ -421,8 +134,6 @@ export async function runUpload() {
     provider_name: provider.name || '',
     car_path: carPath,
     upload_status: 'uploaded',
-    cache_key: cacheKey,
-    result_artifact_name: resultArtifactName,
   })
 
   console.log('\n━━━ Upload Complete ━━━')
@@ -435,7 +146,7 @@ export async function runUpload() {
   console.log(`Preview: ${previewURL}`)
 
   /** @type {Partial<CombinedContext>} */
-  ctx = await loadContext(workspace)
+  ctx = getGlobalContext()
   await writeSummary(ctx, 'Uploaded')
 
   // Comment on PR

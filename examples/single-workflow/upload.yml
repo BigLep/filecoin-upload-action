@@ -1,7 +1,7 @@
 name: Upload to Filecoin
 
 # Simple single-workflow pattern - for same-repo PRs only
-# NOTE: Fork PR support is currently disabled anyway
+# NOTE: Fork PR support is currently disabled
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -28,11 +28,10 @@ jobs:
           mkdir -p dist
           echo "Built content" > dist/index.html
 
-      # Use the action in ALL mode (explicitly opt-in to single-workflow)
+      # Upload to Filecoin - the action will build CAR and upload in a single flow
       - name: Upload to Filecoin
         uses: sgtpooki/filecoin-upload-action@v1
         with:
-          mode: all  # ⚠️ Security: Only use if you trust all contributors
           walletPrivateKey: ${{ secrets.WALLET_PRIVATE_KEY }}
           path: dist
           minDays: "30"
