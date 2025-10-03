@@ -33,9 +33,8 @@ export interface CombinedContext {
   artifact_car_path?: string
   content_path?: string
   wallet_private_key?: string
-  min_days?: number
-  max_balance?: bigint
-  max_top_up?: bigint
+  min_storage_days?: number
+  filecoin_pay_balance_limit?: bigint
   with_cdn?: boolean
   provider_address?: string
   preview_url?: string
@@ -50,9 +49,9 @@ export interface CombinedContext {
 export interface ParsedInputs {
   walletPrivateKey?: string
   contentPath: string
-  minDays: number
-  maxBalance?: bigint | undefined
-  maxTopUp?: bigint
+  network: 'mainnet' | 'calibration'
+  minStorageDays: number
+  filecoinPayBalanceLimit?: bigint | undefined
   withCDN: boolean
   token: string
   providerAddress: string
@@ -100,9 +99,8 @@ export interface CommentPRParams {
 }
 
 export interface PaymentConfig {
-  minDays: number
-  maxBalance?: bigint | undefined
-  maxTopUp?: bigint | undefined
+  minStorageDays: number
+  filecoinPayBalanceLimit?: bigint | undefined
 }
 
 export interface UploadConfig {

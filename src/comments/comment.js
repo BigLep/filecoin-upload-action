@@ -1,7 +1,6 @@
 import { Octokit } from '@octokit/rest'
 import { getGlobalContext } from '../context.js'
 import { getErrorMessage } from '../errors.js'
-import { getInput } from '../inputs.js'
 import { getOutputSummary } from '../outputs.js'
 
 /**
@@ -42,7 +41,7 @@ function getWorkflowRunUrl() {
 export async function commentOnPR(ctx) {
   // Try to get PR number from parameter or context
   let { ipfs_root_cid, data_set_id, piece_cid, pr } = ctx
-  const github_token = process.env.GITHUB_TOKEN || getInput('github_token') || ''
+  const github_token = process.env.GITHUB_TOKEN || ''
   const github_repository = process.env.GITHUB_REPOSITORY || ''
 
   /** @type {number | undefined} */

@@ -10,34 +10,27 @@ inputs:
     description: Path to content to upload (file or directory). Typically your build output directory.
     required: true
   walletPrivateKey:
-    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet).
+    description: Wallet private key used to fund uploads (USDFC on Calibration/Mainnet). Required when uploading.
+    required: false
+  network:
+    description: What Filecoin network to use. Should either be "mainnet" or "calibration".
     required: true
 
   # Financial controls
-  minDays:
+  minStorageDays:
     description: >-
-      Minimum runway in days of funding to keep the current data set persisted on Filecoins.
-      This ensures at least this much funds have been deposited to Filecoin Warm Storage.
-      If there isn't, the necessary deposit will be attempted.
-      If there are insufficient funds in the wallet, the action will fail.
+      Minimum runway in days of funding to keep the current data set persisted on Filecoin.
+      If this is not specified, the action will not make Filecoin Pay deposits.
+      Only used when uploading. SECURITY: Hardcode this in trusted workflows.
     required: false
-    default: "10"
-  maxBalance:
+  filecoinPayBalanceLimit:
     description: >-
-      Maximum deposit balance allowed in Filecoin Pay (USDFC).
-      Prevents deposits that would result in total balance exceeding this value.
-      It's strongly recommended to set this to cap your overall spend.
-    required: false
-  maxTopUp:
-    description: >-
-      Maximum allowed additional deposit during this run (USDFC).
-      Strongly recommended to cap PR spend.
+      Maximum Filecoin Pay balance (USDFC) this action will allow after deposits.
+      Required if `minStorageDays` is set. Prevents this action from topping up beyond the limit.
+      Only used when uploading. SECURITY: Hardcode this in trusted workflows.
     required: false
 
   # Optional/Advanced configuration
-  github_token:
-    description: GitHub token for commenting and artifacts. Defaults to workflow token.
-    required: false
   providerAddress:
     description: Optional override for storage provider address (on Calibration/Mainnet). Defaults to a known good provider on Calibration.
     required: false
@@ -148,5 +141,5 @@ runs:
       working-directory: ${{ github.action_path }}
       env:
         INPUTS_JSON: ${{ toJson(inputs) }}
-        GITHUB_TOKEN: ${{ inputs.github_token || github.token }}
+        GITHUB_TOKEN: ${{ github.token }}
       run: node src/run.mjs

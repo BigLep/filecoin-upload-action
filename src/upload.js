@@ -34,7 +34,15 @@ export async function runUpload() {
   // Parse inputs (upload phase needs wallet)
   /** @type {ParsedInputs} */
   const inputs = parseInputs('upload')
-  const { walletPrivateKey, contentPath, minDays, maxBalance, maxTopUp, withCDN, providerAddress } = inputs
+  const {
+    walletPrivateKey,
+    contentPath,
+    network: inputNetwork,
+    minStorageDays,
+    filecoinPayBalanceLimit,
+    withCDN,
+    providerAddress,
+  } = inputs
 
   // Ensure we have PR context available when running from workflow_run
   await ensurePullRequestContext()
@@ -95,11 +103,11 @@ export async function runUpload() {
   if (!walletPrivateKey) {
     throw new Error('walletPrivateKey is required for upload phase')
   }
-  const synapse = await initializeSynapse(walletPrivateKey, logger)
+  const synapse = await initializeSynapse({ walletPrivateKey, network: inputNetwork }, logger)
 
   // Get initial payment status to track deposits
   const initialPaymentStatus = await getPaymentStatus(synapse)
-  const paymentStatus = await handlePayments(synapse, { minDays, maxBalance, maxTopUp }, logger)
+  const paymentStatus = await handlePayments(synapse, { minStorageDays, filecoinPayBalanceLimit }, logger)
 
   const uploadResult = /** @type {UploadResult} */ (
     await uploadCarToFilecoin(synapse, carPath, rootCid, { withCDN, providerAddress }, logger)

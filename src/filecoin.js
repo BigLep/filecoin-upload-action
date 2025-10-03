@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs'
-import { TIME_CONSTANTS } from '@filoz/synapse-sdk'
+import { RPC_URLS, TIME_CONSTANTS } from '@filoz/synapse-sdk'
 import { ethers } from 'ethers'
 import { createCarFromPath } from 'filecoin-pin/dist/add/unixfs-car.js'
 import { validatePaymentSetup } from 'filecoin-pin/dist/common/upload-flow.js'
@@ -55,14 +55,24 @@ export function calculateStorageRunway(status) {
 
 /**
  * Initialize Synapse sdk with error handling
- * @param {string} walletPrivateKey - Wallet private key
+ * @param {{ walletPrivateKey: string, network: 'mainnet' | 'calibration' }} config - Wallet and network config
  * @param {any} logger - Logger instance
  * @returns {Promise<any>} Synapse service
  */
-export async function initializeSynapse(walletPrivateKey, logger) {
+export async function initializeSynapse(config, logger) {
   try {
+    const { walletPrivateKey, network } = config
+    if (!network || (network !== 'mainnet' && network !== 'calibration')) {
+      throw new FilecoinPinError('Network must be either "mainnet" or "calibration"', ERROR_CODES.INVALID_INPUT)
+    }
+
+    const rpcConfig = RPC_URLS[network]
+    if (!rpcConfig) {
+      throw new FilecoinPinError(`Unsupported network: ${network}`, ERROR_CODES.INVALID_INPUT)
+    }
+
     // @ts-expect-error - synapse types broken.
-    return await initSynapse({ privateKey: walletPrivateKey }, logger)
+    return await initSynapse({ privateKey: walletPrivateKey, rpcUrl: rpcConfig.websocket }, logger)
   } catch (error) {
     const errorMessage = getErrorMessage(error)
     if (errorMessage.includes('invalid private key')) {
@@ -75,12 +85,12 @@ export async function initializeSynapse(walletPrivateKey, logger) {
 /**
  * Handle payment setup and top-ups
  * @param {any} synapse - Synapse service
- * @param {{ minDays: number, maxBalance?: bigint | undefined, maxTopUp?: bigint | undefined }} options - Payment options
+ * @param {{ minStorageDays: number, filecoinPayBalanceLimit?: bigint | undefined }} options - Payment options
  * @param {any} logger - Logger instance
  * @returns {Promise<any>} Updated payment status
  */
 export async function handlePayments(synapse, options, logger) {
-  const { minDays, maxBalance, maxTopUp } = options
+  const { minStorageDays, filecoinPayBalanceLimit } = options
 
   // Ensure WarmStorage allowances are at max
   await checkAndSetAllowances(synapse)
@@ -88,38 +98,38 @@ export async function handlePayments(synapse, options, logger) {
   // Check current payment status
   let status = await getPaymentStatus(synapse)
 
-  // Compute top-up to satisfy minDays
+  // Compute top-up to satisfy minStorageDays
   let requiredTopUp = 0n
-  if (minDays > 0) {
-    const { topUp } = computeTopUpForDuration(status, minDays)
+  if (minStorageDays > 0) {
+    const { topUp } = computeTopUpForDuration(status, minStorageDays)
     if (topUp > requiredTopUp) requiredTopUp = topUp
   }
 
   // Check if deposit would exceed maximum balance if specified
-  if (maxBalance != null && maxBalance > 0n) {
-    // Check if current balance already equals or exceeds maxBalance
-    if (status.depositedAmount >= maxBalance) {
+  if (filecoinPayBalanceLimit != null && filecoinPayBalanceLimit >= 0n) {
+    // Check if current balance already equals or exceeds limit
+    if (status.depositedAmount >= filecoinPayBalanceLimit) {
       logger.warn(
-        `⚠️  Current balance (${ethers.formatUnits(status.depositedAmount, 18)} USDFC) already equals or exceeds maxBalance (${ethers.formatUnits(maxBalance, 18)} USDFC). No additional deposits will be made.`
+        `⚠️  Current balance (${ethers.formatUnits(status.depositedAmount, 18)} USDFC) already equals or exceeds filecoinPayBalanceLimit (${ethers.formatUnits(filecoinPayBalanceLimit, 18)} USDFC). No additional deposits will be made.`
       )
       requiredTopUp = 0n // Don't deposit anything
     } else {
-      // Check if required top-up would exceed maxBalance
+      // Check if required top-up would exceed the limit
       const projectedBalance = status.depositedAmount + requiredTopUp
-      if (projectedBalance > maxBalance) {
-        // Calculate the maximum allowed top-up that won't exceed maxBalance
-        const maxAllowedTopUp = maxBalance - status.depositedAmount
+      if (projectedBalance > filecoinPayBalanceLimit) {
+        // Calculate the maximum allowed top-up that won't exceed the limit
+        const maxAllowedTopUp = filecoinPayBalanceLimit - status.depositedAmount
 
         if (maxAllowedTopUp <= 0n) {
           // This shouldn't happen due to the check above, but just in case
           logger.warn(
-            `⚠️  Cannot deposit any amount without exceeding maxBalance (${ethers.formatUnits(maxBalance, 18)} USDFC). No additional deposits will be made.`
+            `⚠️  Cannot deposit any amount without exceeding filecoinPayBalanceLimit (${ethers.formatUnits(filecoinPayBalanceLimit, 18)} USDFC). No additional deposits will be made.`
           )
           requiredTopUp = 0n
         } else {
-          // Reduce the top-up to fit within maxBalance
+          // Reduce the top-up to fit within the limit
           logger.warn(
-            `⚠️  Required top-up (${ethers.formatUnits(requiredTopUp, 18)} USDFC) would exceed maxBalance (${ethers.formatUnits(maxBalance, 18)} USDFC). Reducing to ${ethers.formatUnits(maxAllowedTopUp, 18)} USDFC.`
+            `⚠️  Required top-up (${ethers.formatUnits(requiredTopUp, 18)} USDFC) would exceed filecoinPayBalanceLimit (${ethers.formatUnits(filecoinPayBalanceLimit, 18)} USDFC). Reducing to ${ethers.formatUnits(maxAllowedTopUp, 18)} USDFC.`
           )
           requiredTopUp = maxAllowedTopUp
         }
@@ -128,13 +138,6 @@ export async function handlePayments(synapse, options, logger) {
   }
 
   if (requiredTopUp > 0n) {
-    if (maxTopUp != null && requiredTopUp > maxTopUp) {
-      throw new FilecoinPinError(
-        `Top-up required (${ethers.formatUnits(requiredTopUp, 18)} USDFC) exceeds maxTopUp (${ethers.formatUnits(maxTopUp, 18)} USDFC)`,
-        ERROR_CODES.INSUFFICIENT_FUNDS
-      )
-    }
-
     logger.info(`Depositing ${ethers.formatUnits(requiredTopUp, 18)} USDFC to Filecoin Pay ...`)
     await depositUSDFC(synapse, requiredTopUp)
     status = await getPaymentStatus(synapse)

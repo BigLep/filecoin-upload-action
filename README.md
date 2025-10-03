@@ -4,9 +4,9 @@ Composite GitHub Action that packs a file or directory into a UnixFS CAR, upload
 
 ## Quick Start
 
-The action uses a **secure two-workflow pattern** by default. This currently works for same-repo PRs only (fork PR support temporarily disabled).
+Run your build in an untrusted workflow, publish the build output as an artifact, then run this action in a trusted workflow to create the CAR and upload to Filecoin. Fork PR support is still disabled, so workflows must run within the same repository.
 
-**Step 1: Build workflow** (runs on PR, no secrets):
+**Step 1: Build workflow** (no secrets):
 ```yaml
 # .github/workflows/build-pr.yml
 name: Build PR Content
@@ -18,13 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm ci && npm run build
-      - uses: sgtpooki/filecoin-upload-action@v1
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
+          name: site-dist
           path: dist
-          # mode: build is the default (secure)
 ```
 
-**Step 2: Upload workflow** (runs after build, has secrets):
+**Step 2: Upload workflow** (runs after build, uses secrets):
 ```yaml
 # .github/workflows/upload-to-filecoin.yml
 name: Upload to Filecoin
@@ -41,12 +42,23 @@ jobs:
       actions: read
       pull-requests: write
     steps:
-      - uses: sgtpooki/filecoin-upload-action@v1
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
-          mode: upload
+          name: site-dist
+          path: dist
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Upload to Filecoin
+        uses: sgtpooki/filecoin-upload-action@v1
+        with:
+          path: dist
           walletPrivateKey: ${{ secrets.FILECOIN_WALLET_KEY }}
-          minDays: "30"
-          maxTopUp: "0.10"  # Hardcoded limit (0.10 USDFC = 10 cents)
+          network: calibration
+          minStorageDays: "30"
+          filecoinPayBalanceLimit: "0.25"
 ```
 
 **Versioning**: This action uses [Semantic Release](https://semantic-release.gitbook.io/) for automated versioning. Use version tags like `@v1`, `@v1.0.0`, or commit SHAs for supply-chain safety.
@@ -57,27 +69,24 @@ jobs:
 
 | Name | Required | Default | Description |
 | --- | --- | --- | --- |
-| `mode` | | `build` | Action mode: `build` (default, secure - CAR only), `upload` (upload from artifact), or `all` (single-workflow, use with caution) |
-| `path` | | `dist` | Directory or file to package as a CAR. Required for `all` and `build` modes |
-| `walletPrivateKey` | ✅* | — | Wallet private key. *Required for `all` and `upload` modes, not needed for `build` |
+| `path` | ✅ | — | Directory or file to package as a CAR |
+| `walletPrivateKey` | ✅* | — | Wallet private key. *Required when the action uploads to Filecoin |
+| `network` | ✅ | — | Filecoin network to use. Must be `mainnet` or `calibration` |
 
 ### Financial Controls
 
 | Name | Required | Default | Description |
 | --- | --- | --- | --- |
-| `minDays` | | `10` | Minimum runway (days) to keep current spend alive |
-| `maxTopUp` | | — | Maximum additional deposit (USDFC) allowed in this run. **Strongly recommended for security** |
-| `maxBalance` | | — | Maximum USDFC balance allowed (prevents deposits exceeding this value) |
+| `minStorageDays` | | — | Minimum funding runway (days) to maintain in Filecoin Pay |
+| `filecoinPayBalanceLimit` | ⚠️* | — | Maximum Filecoin Pay balance (USDFC) this action will allow. *Required if `minStorageDays` is set |
 
 ### Optional/Advanced
 
 | Name | Required | Default | Description |
 | --- | --- | --- | --- |
-| `github_token` | | `${{ github.token }}` | Token used for GitHub API calls (PR comments, artifact lookups) |
 | `providerAddress` | | `0xa3971…` | Override storage provider address |
 | `token` | | `USDFC` | Payment token. Currently only USDFC is supported |
 | `withCDN` | | `false` | Request CDN in the storage context |
-| `artifact_name` | | — | Override artifact name for manual testing. Leave empty for auto-detection |
 
 Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifact paths, and upload status (`uploaded`, `reused-cache`, `reused-artifact`, or `build-only`).
 
@@ -86,9 +95,8 @@ Outputs include the IPFS root CID, dataset ID, piece CID, provider info, artifac
 - ✅ Pin the action by version tag or commit SHA
 - ✅ Grant `actions: read` if you want artifact reuse (cache fallback) to work
 - ✅ Protect workflow files with CODEOWNERS/branch protection
-- ✅ **Always** cap spend with `maxTopUp`, especially on `pull_request` events
+- ✅ **Always** hardcode `minStorageDays` and `filecoinPayBalanceLimit` in trusted workflows
 - ✅ **Never** use `pull_request_target` - use the two-workflow pattern instead
-- ✅ When using two-workflow pattern, **hardcode** `minDays` and `maxTopUp` in the upload workflow
 - ✅ Enable **branch protection** on main to require reviews for workflow changes
 - ✅ Use **CODEOWNERS** to require security team approval for workflow modifications
 - ⚠️ Consider gating deposits with Environments that require approval

@@ -1,16 +1,11 @@
 # Usage Guide
 
-This action supports multiple modes of operation. **The two-workflow pattern is recommended for all use cases.**
+This action builds a UnixFS CAR from your site or files and uploads it to Filecoin in a single invocation. For security, separate untrusted build steps from the trusted upload step.
 
-## Recommended: `build` + `upload` (Two-Workflow Pattern)
+## Recommended Pattern: Build + Upload Workflows
 
-✅ **This is the secure default pattern.**
-
-**Use Case**: All PRs (including forks), maximum security
-
-This splits the action into two separate workflows with a security boundary. `build` is the default mode, so you only need to specify `mode: upload` in the second workflow.
-
-📁 **[See complete examples →](../examples/two-workflow-pattern/)**
+1. **Build workflow** (no secrets) compiles your project and uploads the build output as an artifact.
+2. **Upload workflow** (trusted) downloads the artifact, runs this action, and provides wallet secrets.
 
 ### Workflow 1: Build (Untrusted)
 
@@ -19,7 +14,7 @@ This splits the action into two separate workflows with a security boundary. `bu
 name: Build PR Content
 
 on:
-  pull_request:  # Runs on fork PRs
+  pull_request:
 
 jobs:
   build:
@@ -32,12 +27,10 @@ jobs:
       - name: Build your site
         run: npm run build
 
-      # Build mode: compute CAR, no secrets needed
-      # The action automatically saves PR context and generates artifact names
-      - name: Build CAR file
-        uses: sgtpooki/filecoin-upload-action@v1
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          mode: build
+          name: site-dist
           path: dist
 ```
 
@@ -56,38 +49,39 @@ jobs:
   upload:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
     steps:
-      # Upload mode: automatically finds artifacts, downloads context, and comments on PR
-      # The action handles everything - just provide secrets and limits!
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: site-dist
+          path: dist
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+
       - name: Upload to Filecoin
         uses: sgtpooki/filecoin-upload-action@v1
         with:
-          mode: upload
+          path: dist
           walletPrivateKey: ${{ secrets.WALLET_PRIVATE_KEY }}
-          minDays: "30"   # Ensure 30 days of funding; HARDCODED - not from PR!
-          maxTopUp: "0.10"  # 10 cents, or 0.10 USDFC; HARDCODED - not from PR!
+          network: calibration
+          minStorageDays: "30"
+          filecoinPayBalanceLimit: "0.25"
 ```
 
-**Security**:
-- ✅ Fork PRs can trigger builds
-- ✅ Secrets only in second workflow
-- ✅ Financial parameters hardcoded in trusted workflow
-- ✅ PR code never sees wallet private key
-- ✅ Upload workflow runs from main branch (PR can't modify hardcoded values)
-
-**Important**: The `workflow_run` trigger always uses the workflow file from your default branch (main), NOT from the PR branch. This means even if a PR tries to modify the hardcoded `minDays` or `maxTopUp` values in the upload workflow, those changes won't take effect until the PR is merged. This is a key security feature!
+**Security hints**:
+- Build workflow never sees wallet secrets.
+- Upload workflow runs from the main branch version of the file when triggered via `workflow_run`, so PRs cannot change hardcoded values until merged.
+- Hardcode financial parameters in trusted workflows and review changes carefully.
 
 ---
 
-## Alternative: `mode: all` (Single Workflow - Not Recommended)
+## Alternative: Single Workflow (Trusted Repos Only)
 
-⚠️ **Security Warning**: This mode is less secure. Only use if you fully trust all contributors and don't accept fork PRs.
-
-**Use Case**: Same-repo PRs only, no fork support
-
-This is the simplest mode - everything happens in one workflow. **You must explicitly set `mode: all`** to use this pattern.
-
-📁 **[See complete example →](../examples/single-workflow/upload.yml)**
+If every contributor is trusted and you do not accept fork PRs, you can run build and upload in the same job:
 
 ```yaml
 name: Upload to Filecoin
@@ -102,66 +96,73 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build your site
-        run: npm run build
-
+      - run: npm run build
       - name: Upload to Filecoin
         uses: sgtpooki/filecoin-upload-action@v1
         with:
-          mode: all  # ⚠️ Must explicitly opt-in to single-workflow pattern
-          walletPrivateKey: ${{ secrets.WALLET_PRIVATE_KEY }}
           path: dist
-          minDays: "30"
-          maxTopUp: "0.10"
+          walletPrivateKey: ${{ secrets.WALLET_PRIVATE_KEY }}
+          network: mainnet
+          minStorageDays: "7"
+          filecoinPayBalanceLimit: "1.00"
 ```
 
-**Security**:
-- ✅ Safe for same-repo PRs from trusted contributors
-- ❌ NOT safe for fork PRs
-- ⚠️ PR authors can modify workflow file before merging
+Use this approach only when you fully trust everyone who can open PRs.
 
 ---
 
 ## Input Reference
 
-### `mode`
+### `path`
 - **Type**: `string`
-- **Default**: `build` (secure default)
-- **Options**: `build` (default, secure), `upload` (for trusted workflows), `all` (single-workflow, use with caution)
-- **Description**: Controls action behavior. Default is `build` to encourage the secure two-workflow pattern.
+- **Required**: Yes
+- **Description**: File or directory to package into a CAR and upload.
 
 ### `walletPrivateKey`
 - **Type**: `string`
-- **Required**: Yes for `all` and `upload` modes, No for `build` mode
-- **Description**: Wallet private key for Filecoin uploads
+- **Required**: Yes when uploading
+- **Description**: EVM-compatible private key for the Filecoin wallet.
 
-### `path`
+### `network`
 - **Type**: `string`
-- **Default**: `dist`
-- **Required**: Yes for `all` and `build` modes, No for `upload` mode
-- **Description**: Path to content to upload
+- **Required**: Yes
+- **Options**: `mainnet`, `calibration`
+- **Description**: Selects the Filecoin network; controls the RPC endpoint used by filecoin-pin.
 
-### `minDays`
+### `minStorageDays`
 - **Type**: `string`
-- **Default**: `"10"`
-- **Security**: Hardcode in upload workflow when using two-workflow pattern
+- **Required**: No
+- **Description**: Desired storage runway in days. When provided, the action calculates the deposit needed to reach this runway.
 
-### `maxTopUp`
+### `filecoinPayBalanceLimit`
 - **Type**: `string`
-- **Security**: Always set this to limit spending, especially in two-workflow pattern
+- **Required**: Yes if `minStorageDays` is provided
+- **Description**: Maximum Filecoin Pay balance (USDFC) allowed after deposits.
+
+### `providerAddress`
+- **Type**: `string`
+- **Default**: `0xa3971A7234a3379A1813d9867B531e7EeB20ae07`
+- **Description**: Optional override for the storage provider.
+
+### `token`
+- **Type**: `string`
+- **Default**: `USDFC`
+- **Description**: Payment token identifier. Only `USDFC` is currently supported.
+
+### `withCDN`
+- **Type**: `boolean`
+- **Default**: `false`
+- **Description**: Request CDN support when available. Warning: filecoin-pin does not yet adjust deposit calculations for CDN usage.
 
 ---
 
 ## Outputs
-
-All modes provide these outputs:
 
 - `ipfs_root_cid`: IPFS Root CID
 - `data_set_id`: Synapse Data Set ID
 - `piece_cid`: Filecoin Piece CID
 - `provider_id`: Storage Provider ID
 - `provider_name`: Storage Provider Name
-- `car_path`: Path to CAR file
-- `upload_status`: Status (`uploaded`, `reused-cache`, `reused-artifact`, or `build-only`)
+- `car_path`: Path to the generated CAR file
+- `upload_status`: Status of the run (e.g., `uploaded`, `fork-pr-blocked`)
 

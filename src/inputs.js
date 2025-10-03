@@ -85,13 +85,24 @@ export function parseBoolean(v) {
  */
 export function parseInputs(phase = 'single') {
   const walletPrivateKey = getInput('walletPrivateKey')
-  const contentPath = getInput('path', 'dist')
-  const minDaysRaw = getInput('minDays', '10')
-  const maxBalanceRaw = getInput('maxBalance', '')
-  const maxTopUpRaw = getInput('maxTopUp', '')
+  const contentPath = getInput('path')
+  const networkRaw = getInput('network')
+  const minStorageDaysRaw = getInput('minStorageDays', '')
+  const filecoinPayBalanceLimitRaw = getInput('filecoinPayBalanceLimit', '')
   const withCDN = parseBoolean(getInput('withCDN', 'false'))
   const token = getInput('token', 'USDFC')
   const providerAddress = getInput('providerAddress', '0xa3971A7234a3379A1813d9867B531e7EeB20ae07')
+
+  if (!contentPath) {
+    throw new Error('path is required')
+  }
+
+  const normalizedNetwork = networkRaw.trim().toLowerCase()
+  /** @type {'mainnet' | 'calibration'} */
+  const network = /** @type {'mainnet' | 'calibration'} */ (normalizedNetwork)
+  if (!network || (network !== 'mainnet' && network !== 'calibration')) {
+    throw new Error('network must be either "mainnet" or "calibration"')
+  }
 
   // Validate required inputs (only for phases that need wallet)
   // Build mode (compute phase) doesn't need the wallet
@@ -100,11 +111,16 @@ export function parseInputs(phase = 'single') {
   }
 
   // Parse numeric values
-  let minDays = Number(minDaysRaw)
-  if (!Number.isFinite(minDays) || minDays < 0) minDays = 0
+  let minStorageDays = Number(minStorageDaysRaw)
+  if (!Number.isFinite(minStorageDays) || minStorageDays < 0) minStorageDays = 0
 
-  const maxBalance = maxBalanceRaw ? ethers.parseUnits(maxBalanceRaw, 18) : undefined
-  const maxTopUp = maxTopUpRaw ? ethers.parseUnits(maxTopUpRaw, 18) : undefined
+  const filecoinPayBalanceLimit = filecoinPayBalanceLimitRaw
+    ? ethers.parseUnits(filecoinPayBalanceLimitRaw, 18)
+    : undefined
+
+  if (minStorageDays > 0 && filecoinPayBalanceLimit == null) {
+    throw new Error('filecoinPayBalanceLimit must be set when minStorageDays is provided')
+  }
 
   // Validate token selection (currently USDFC only)
   if (token && token.toUpperCase() !== 'USDFC') {
@@ -114,15 +130,12 @@ export function parseInputs(phase = 'single') {
   const parsedInputs = {
     walletPrivateKey,
     contentPath,
-    minDays,
-    maxBalance,
+    network,
+    minStorageDays,
+    filecoinPayBalanceLimit,
     withCDN,
     token,
     providerAddress,
-  }
-
-  if (maxTopUp != null) {
-    parsedInputs.maxTopUp = maxTopUp
   }
 
   return parsedInputs

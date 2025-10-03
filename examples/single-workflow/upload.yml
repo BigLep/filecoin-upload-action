@@ -34,5 +34,6 @@ jobs:
         with:
           walletPrivateKey: ${{ secrets.WALLET_PRIVATE_KEY }}
           path: dist
-          minDays: "30"
-          maxTopUp: "100"
+          network: mainnet
+          minStorageDays: "30"
+          filecoinPayBalanceLimit: "5.00"

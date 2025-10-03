@@ -5,8 +5,6 @@ name: Build PR Content
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  pull_request_target:
-    types: [opened, synchronize, reopened]
   push:
     branches: [main]  # Also run when PRs are merged to main
 
@@ -17,12 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # For pull_request_target: checkout the PR code (head)
-          # For pull_request: use PR head SHA
-          # For push: use default SHA
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          # For pull_request_target, we need to fetch the PR head
-          fetch-depth: 0
 
       # Your build steps here (example)
       - name: Build
@@ -38,6 +31,6 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts-${{ github.run_id }}
+          name: site-dist
           path: dist
           retention-days: 1
