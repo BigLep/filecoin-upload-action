@@ -58,6 +58,10 @@ export async function runBuild() {
       console.log('━━━ Fork PR Detected - Building CAR but Blocking Upload ━━━')
       console.error('::error::Fork PR support is currently disabled. Only same-repo workflows are supported.')
       console.log('::notice::Building CAR file but upload will be blocked')
+      // update the context with the upload status
+      mergeAndSaveContext({
+        upload_status: 'fork-pr-blocked',
+      })
     }
   }
 
