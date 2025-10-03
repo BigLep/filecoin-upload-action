@@ -12,6 +12,7 @@ import {
   initializeSynapse,
   uploadCarToFilecoin,
 } from './filecoin.js'
+import { ensurePullRequestContext } from './github.js'
 import { parseInputs } from './inputs.js'
 import { writeOutputs, writeSummary } from './outputs.js'
 
@@ -34,6 +35,9 @@ export async function runUpload() {
   /** @type {ParsedInputs} */
   const inputs = parseInputs('upload')
   const { walletPrivateKey, contentPath, minDays, maxBalance, maxTopUp, withCDN, providerAddress } = inputs
+
+  // Ensure we have PR context available when running from workflow_run
+  await ensurePullRequestContext()
 
   // Get context from build phase (already in memory from same workflow run)
   /** @type {Partial<CombinedContext>} */
