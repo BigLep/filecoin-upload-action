@@ -35,7 +35,7 @@ export async function runUpload() {
   const inputs = parseInputs('upload')
   const { walletPrivateKey, contentPath, minDays, maxBalance, maxTopUp, withCDN, providerAddress } = inputs
 
-  // Get context from build phase
+  // Get context from build phase (already in memory from same workflow run)
   /** @type {Partial<CombinedContext>} */
   let ctx = getGlobalContext()
   console.log('[context-debug] Loaded context from build phase:', ctx)
